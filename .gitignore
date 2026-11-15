@@ -1,0 +1,14 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+
+# Node / Vite
+node_modules/
+dist/
+npm-debug.log*
+
+# Local user blog workspace (managed as its own independent Git repository)
+blog_workspace/
+
+# macOS
+.DS_Store
