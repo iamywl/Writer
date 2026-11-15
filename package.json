@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "desktop": "npm run build && PATH=\"$HOME/.cargo/bin:$PATH\" cargo run -p writer-app",
+    "desktop": "npm run build && PATH=\"$HOME/.cargo/bin:$PATH\" cargo run --release -p writer-app",
     "test:rust": "PATH=\"$HOME/.cargo/bin:$PATH\" cargo test --workspace"
   },
   "dependencies": {
