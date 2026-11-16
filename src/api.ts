@@ -131,9 +131,13 @@ function isTauriRuntime(): boolean {
 
 async function callBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   if (isTauriRuntime()) {
-    return invoke<T>(cmd, args);
+    try {
+      return await invoke<T>(cmd, args);
+    } catch {
+      // Fallback to embedded local HTTP RPC server
+    }
   }
-  const res = await fetch(`/api/${cmd}`, {
+  const res = await fetch(`http://127.0.0.1:14210/api/${cmd}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(args),

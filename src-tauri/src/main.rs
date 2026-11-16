@@ -513,6 +513,29 @@ fn run_http_rpc_server(state: Arc<AppState>, port: u16) {
     println!("Writer Rust RPC server listening on http://{}", addr);
 
     for mut req in server.incoming_requests() {
+        if req.method() == &tiny_http::Method::Options {
+            let cors_origin =
+                tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..])
+                    .unwrap();
+            let cors_methods = tiny_http::Header::from_bytes(
+                &b"Access-Control-Allow-Methods"[..],
+                &b"POST, GET, OPTIONS"[..],
+            )
+            .unwrap();
+            let cors_headers = tiny_http::Header::from_bytes(
+                &b"Access-Control-Allow-Headers"[..],
+                &b"Content-Type"[..],
+            )
+            .unwrap();
+            let response = tiny_http::Response::from_string("")
+                .with_status_code(200)
+                .with_header(cors_origin)
+                .with_header(cors_methods)
+                .with_header(cors_headers);
+            let _ = req.respond(response);
+            continue;
+        }
+
         let url = req.url().to_string();
         let mut body = String::new();
         let _ = req.as_reader().read_to_string(&mut body);
