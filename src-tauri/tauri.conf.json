@@ -12,11 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "Writer — Overleaf-Style Git Blog Studio (Rust)",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 1024,
-        "minHeight": 680
+        "title": "Writer",
+        "width": 1400,
+        "height": 880,
+        "minWidth": 560,
+        "minHeight": 400,
+        "resizable": true
       }
     ],
     "security": {

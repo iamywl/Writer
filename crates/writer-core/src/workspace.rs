@@ -77,10 +77,10 @@ impl WriterWorkspace {
             // Create a sample demo image in the workspace so the user immediately sees the Image Studio & Tray in action!
             let sample_asset = self.create_demo_photo_asset()?;
             let sample_md = format!(
-                r#"# 오버리프 스타일 Rust 블로그 에디터, Writer 시작하기
+                r#"# Writer로 블로그 글쓰기 시작하기
 
 <!-- writer:size=18 -->
-코드를 잘 아는 분은 **마크다운(Code Mode)**으로 빠르게 글을 작성하고, 마크다운이 낯선 분은 **비주얼 에디터(Visual Mode)**에서 글자 크기를 바꾸고 사진을 넣으며 직관적으로 글을 쓸 수 있습니다.
+코드를 잘 아는 분은 **마크다운 편집** 모드로 빠르게 글을 작성하고, 일반 작성자분은 **일반 편집** 모드에서 타이핑한 뒤 드래그해 글자 크기를 바꾸고 사진을 추가할 수 있습니다.
 
 ## 1. 아이폰 사진 필터 & 포맷 자동 변환
 
@@ -100,7 +100,7 @@ fn main() {{
 }}
 ```
 
-- 좌측 **Git 타임라인**에서 언제든 이전 버전으로 글을 되돌릴 수 있습니다.
+- 좌측 **Git 타임라인**에서 글이 변경되었을 때만 스냅샷을 찍고 이전 버전으로 되돌릴 수 있습니다.
 - 우측 **가공 완료 사진 트레이**에서 사진을 원클릭 복사해 티스토리에 바로 붙여넣으세요!"#,
                 id = sample_asset.asset_id,
                 exif = sample_asset

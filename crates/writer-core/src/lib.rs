@@ -388,6 +388,12 @@ pub fn add(a: i32, b: i32) -> i32 {
             .unwrap();
         let snap1 = ws.create_git_snapshot("제주 여행기 1차 작성").unwrap();
 
+        // Attempting to create another snapshot with ZERO changes must fail!
+        assert!(
+            ws.create_git_snapshot("중복 빈 스냅샷 시도").is_err(),
+            "Empty snapshot with no changes must be rejected"
+        );
+
         // Modify to Version 2
         ws.save_post_markdown(
             "my-trip",

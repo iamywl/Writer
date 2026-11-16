@@ -40,6 +40,7 @@ pub struct SavePostResponse {
     pub posts: Vec<PostDocument>,
     pub preview_html: String,
     pub copy_html: String,
+    pub has_changes: bool,
 }
 
 pub fn handle_get_workspace_bootstrap(state: &AppState) -> Result<WorkspaceBootstrapResponse, String> {
@@ -87,11 +88,16 @@ pub fn handle_load_post(
     let copy_html = ws
         .compile_post_for_tistory(&post.markdown, preset, false)
         .map_err(|e| e.to_string())?;
+    let has_changes = ws
+        .git()
+        .has_uncommitted_changes()
+        .unwrap_or(false);
     Ok(SavePostResponse {
         post,
         posts,
         preview_html,
         copy_html,
+        has_changes,
     })
 }
 
@@ -113,11 +119,16 @@ pub fn handle_create_post(
     let copy_html = ws
         .compile_post_for_tistory(&post.markdown, preset, false)
         .map_err(|e| e.to_string())?;
+    let has_changes = ws
+        .git()
+        .has_uncommitted_changes()
+        .unwrap_or(true);
     Ok(SavePostResponse {
         post,
         posts,
         preview_html,
         copy_html,
+        has_changes,
     })
 }
 
@@ -138,11 +149,16 @@ pub fn handle_save_markdown(
     let copy_html = ws
         .compile_post_for_tistory(&post.markdown, preset, false)
         .map_err(|e| e.to_string())?;
+    let has_changes = ws
+        .git()
+        .has_uncommitted_changes()
+        .unwrap_or(false);
     Ok(SavePostResponse {
         post,
         posts,
         preview_html,
         copy_html,
+        has_changes,
     })
 }
 
@@ -163,11 +179,16 @@ pub fn handle_save_visual_blocks(
     let copy_html = ws
         .compile_post_for_tistory(&post.markdown, preset, false)
         .map_err(|e| e.to_string())?;
+    let has_changes = ws
+        .git()
+        .has_uncommitted_changes()
+        .unwrap_or(false);
     Ok(SavePostResponse {
         post,
         posts,
         preview_html,
         copy_html,
+        has_changes,
     })
 }
 
@@ -185,9 +206,11 @@ pub fn handle_upload_image(
         .import_image_bytes(filename, &raw_bytes, recipe)
         .map_err(|e| e.to_string())?;
     let assets = ws.list_assets().map_err(|e| e.to_string())?;
+    let has_changes = ws.git().has_uncommitted_changes().unwrap_or(true);
     Ok(json!({
         "asset": asset,
         "assets": assets,
+        "has_changes": has_changes,
     }))
 }
 
@@ -210,11 +233,13 @@ pub fn handle_update_image_recipe(
     let copy_html = ws
         .compile_post_for_tistory(markdown, preset, false)
         .map_err(|e| e.to_string())?;
+    let has_changes = ws.git().has_uncommitted_changes().unwrap_or(true);
     Ok(json!({
         "asset": asset,
         "assets": assets,
         "preview_html": preview_html,
         "copy_html": copy_html,
+        "has_changes": has_changes,
     }))
 }
 

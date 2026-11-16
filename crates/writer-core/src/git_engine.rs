@@ -22,6 +22,7 @@ pub struct GitSnapshotInfo {
 pub struct GitRemoteStatus {
     pub remote_url: Option<String>,
     pub branch: String,
+    pub has_changes: bool,
 }
 
 /// Manages the local Git repository for a Writer workspace.
@@ -65,6 +66,7 @@ impl WorkspaceGit {
     }
 
     /// Creates a new version snapshot (commit) of all current files in the workspace.
+    /// Returns an error if nothing has changed since the last snapshot (`HEAD`).
     pub fn create_snapshot(
         &self,
         message: &str,
@@ -87,6 +89,12 @@ impl WorkspaceGit {
             .and_then(|h| h.target())
             .and_then(|oid| self.repo.find_commit(oid).ok());
 
+        if let Some(ref parent) = parent_commit {
+            if parent.tree_id() == tree_id {
+                anyhow::bail!("변경된 내용이 없습니다. 글이나 사진 설정을 수정한 뒤 스냅샷을 저장해 주세요.");
+            }
+        }
+
         let commit_oid = match parent_commit {
             Some(ref parent) => {
                 self.repo
@@ -99,6 +107,26 @@ impl WorkspaceGit {
 
         let commit = self.repo.find_commit(commit_oid)?;
         Ok(commit_to_info(&commit))
+    }
+
+    /// Checks whether the working directory has uncommitted changes compared to `HEAD`.
+    pub fn has_uncommitted_changes(&self) -> Result<bool> {
+        let Ok(head) = self.repo.head() else {
+            return Ok(true);
+        };
+        let Some(head_oid) = head.target() else {
+            return Ok(true);
+        };
+        let head_commit = self.repo.find_commit(head_oid)?;
+        let head_tree = head_commit.tree()?;
+
+        let mut diff_opts = DiffOptions::new();
+        diff_opts.include_untracked(true);
+        let diff = self
+            .repo
+            .diff_tree_to_workdir_with_index(Some(&head_tree), Some(&mut diff_opts))?;
+
+        Ok(diff.deltas().len() > 0)
     }
 
     /// Lists snapshots from newest to oldest.
@@ -153,8 +181,10 @@ impl WorkspaceGit {
         Ok(diff_text)
     }
 
-    /// Safely restores the workspace files to the exact state of `snapshot_id`
-    /// and records a new forward snapshot commit (non-destructive rollback).
+    /// Safely restores the workspace files to the exact state of `snapshot_id`.
+    /// - If rolling back to a previous commit whose tree differs from `HEAD`, records a new forward snapshot commit.
+    /// - If discarding uncommitted working-tree edits back to `HEAD`, restores the files without creating a duplicate commit.
+    /// - If the working tree is already identical to `snapshot_id`, returns an error.
     pub fn rollback_to_snapshot(
         &self,
         snapshot_id: &str,
@@ -166,10 +196,38 @@ impl WorkspaceGit {
         let target_commit = self.repo.find_commit(oid)?;
         let target_tree = target_commit.tree()?;
 
+        let mut diff_opts = DiffOptions::new();
+        diff_opts.include_untracked(true);
+        let diff_to_target = self
+            .repo
+            .diff_tree_to_workdir_with_index(Some(&target_tree), Some(&mut diff_opts))?;
+        let has_workdir_diff = diff_to_target.deltas().len() > 0;
+
+        let head_tree_id = self
+            .repo
+            .head()
+            .ok()
+            .and_then(|h| h.target())
+            .and_then(|id| self.repo.find_commit(id).ok())
+            .map(|c| c.tree_id());
+
+        if !has_workdir_diff && head_tree_id == Some(target_tree.id()) {
+            let short_id = &snapshot_id[..snapshot_id.len().min(7)];
+            anyhow::bail!("이미 선택한 버전([{}])과 현재 내용이 동일합니다.", short_id);
+        }
+
         let mut checkout_opts = CheckoutBuilder::new();
         checkout_opts.force();
         self.repo
             .checkout_tree(target_tree.as_object(), Some(&mut checkout_opts))?;
+
+        if head_tree_id == Some(target_tree.id()) {
+            // Reverted uncommitted working-directory edits back to HEAD
+            let mut index = self.repo.index()?;
+            index.read_tree(&target_tree)?;
+            index.write()?;
+            return Ok(commit_to_info(&target_commit));
+        }
 
         let short_id = &snapshot_id[..snapshot_id.len().min(7)];
         let msg = format!("버전 복원 (Rollback to {})", short_id);
@@ -191,7 +249,13 @@ impl WorkspaceGit {
             .and_then(|h| h.shorthand().map(|s| s.to_string()))
             .unwrap_or_else(|| "main".to_string());
 
-        Ok(GitRemoteStatus { remote_url, branch })
+        let has_changes = self.has_uncommitted_changes().unwrap_or(false);
+
+        Ok(GitRemoteStatus {
+            remote_url,
+            branch,
+            has_changes,
+        })
     }
 
     /// Sets or updates the `origin` remote URL (e.g., `https://github.com/user/blog.git` or `git@github.com:user/blog.git`).

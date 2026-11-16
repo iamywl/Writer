@@ -90,6 +90,7 @@ export interface GitSnapshotInfo {
 export interface GitRemoteStatus {
   remote_url: string | null;
   branch: string;
+  has_changes: boolean;
 }
 
 export interface TistoryStylePreset {
@@ -123,6 +124,7 @@ export interface SavePostResult {
   posts: PostDocument[];
   preview_html: string;
   copy_html: string;
+  has_changes: boolean;
 }
 
 function isTauriRuntime(): boolean {
@@ -160,11 +162,14 @@ export const api = {
   saveVisualBlocks: (slug: string, blocks: VisualBlock[], preset: TistoryStylePreset) =>
     callBackend<SavePostResult>("save_visual_blocks_cmd", { slug, blocks, preset }),
   uploadImage: (filename: string, base64Data: string, recipe?: ImageRecipe) =>
-    callBackend<{ asset: ImageAssetRecord; assets: ImageAssetRecord[] }>("upload_image_cmd", {
-      filename,
-      base64Data,
-      recipe: recipe ?? null,
-    }),
+    callBackend<{ asset: ImageAssetRecord; assets: ImageAssetRecord[]; has_changes: boolean }>(
+      "upload_image_cmd",
+      {
+        filename,
+        base64Data,
+        recipe: recipe ?? null,
+      }
+    ),
   updateImageRecipe: (
     assetId: string,
     recipe: ImageRecipe,
@@ -177,6 +182,7 @@ export const api = {
       assets: ImageAssetRecord[];
       preview_html: string;
       copy_html: string;
+      has_changes: boolean;
     }>("update_image_recipe_cmd", {
       assetId,
       recipe,
