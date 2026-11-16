@@ -383,9 +383,15 @@ function MainEditorWindow() {
   });
 
   const [previewHtml, setPreviewHtml] = useState<string>("");
-  const [viewMode, setViewMode] = useState<EditorViewMode>("visual");
+  const [viewMode, setViewMode] = useState<EditorViewMode>(() => {
+    const m = new URLSearchParams(window.location.search).get("mode");
+    return m === "code" || m === "split" ? m : "visual";
+  });
 
-  const [activeMenu, setActiveMenu] = useState<LeftMenuTab | null>("posts");
+  const [activeMenu, setActiveMenu] = useState<LeftMenuTab | null>(() => {
+    const t = new URLSearchParams(window.location.search).get("tab") as LeftMenuTab | null;
+    return t || "posts";
+  });
   const [drawerWidth, setDrawerWidth] = useState<number>(296);
   const [splitPercent, setSplitPercent] = useState<number>(50);
 
@@ -1856,7 +1862,11 @@ function MainEditorWindow() {
                       lineHeight: preset.line_height,
                     }}
                     placeholder="내용을 입력하세요..."
-                    rows={Math.max(1, block.text.split("\n").length)}
+                    rows={Math.max(
+                      1,
+                      Math.ceil(block.text.length / 42),
+                      block.text.split("\n").length
+                    )}
                     value={block.text}
                     onFocus={() => setFocusedBlockIdx(idx)}
                     onChange={(e) =>
