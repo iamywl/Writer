@@ -14,6 +14,7 @@ import {
 } from "./api";
 
 type EditorViewMode = "visual" | "code" | "split" | "tistory";
+type LeftMenuTab = "posts" | "git" | "tray" | "studio" | "style";
 
 const FILTER_LABELS: { value: FilterPreset; label: string; desc: string }[] = [
   { value: "original", label: "Original", desc: "원본 색감" },
@@ -77,19 +78,16 @@ export function App() {
   const [previewHtml, setPreviewHtml] = useState<string>("");
   const [copyHtml, setCopyHtml] = useState<string>("");
   const [viewMode, setViewMode] = useState<EditorViewMode>("visual");
-  const [rightTab, setRightTab] = useState<"tray" | "studio">("tray");
-  const [showStyleConfig, setShowStyleConfig] = useState<boolean>(false);
+
+  // Unified Left Menu Bar & Drawer State
+  const [activeMenu, setActiveMenu] = useState<LeftMenuTab | null>("posts");
+  const [drawerWidth, setDrawerWidth] = useState<number>(310);
+  const [splitPercent, setSplitPercent] = useState<number>(50);
+
   const [toast, setToast] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState<boolean>(false);
   const [newPostTitle, setNewPostTitle] = useState<string>("");
   const [showNewPostInput, setShowNewPostInput] = useState<boolean>(false);
-
-  // Resizable & Collapsible Panel States
-  const [leftOpen, setLeftOpen] = useState<boolean>(true);
-  const [rightOpen, setRightOpen] = useState<boolean>(true);
-  const [leftWidth, setLeftWidth] = useState<number>(245);
-  const [rightWidth, setRightWidth] = useState<number>(325);
-  const [splitPercent, setSplitPercent] = useState<number>(50);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const centerAreaRef = useRef<HTMLElement | null>(null);
@@ -131,30 +129,17 @@ export function App() {
       });
   }, []);
 
-  // Drag-resize handlers for Left Sidebar, Right Sidebar, and Center Split
-  const startResizeLeft = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = leftWidth;
-    const onMove = (ev: MouseEvent) => {
-      const next = Math.min(420, Math.max(175, startW + (ev.clientX - startX)));
-      setLeftWidth(next);
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+  const toggleMenuTab = (tab: LeftMenuTab) => {
+    setActiveMenu((prev) => (prev === tab ? null : tab));
   };
 
-  const startResizeRight = (e: React.MouseEvent) => {
+  const startResizeDrawer = (e: React.MouseEvent) => {
     e.preventDefault();
     const startX = e.clientX;
-    const startW = rightWidth;
+    const startW = drawerWidth;
     const onMove = (ev: MouseEvent) => {
-      const next = Math.min(520, Math.max(220, startW - (ev.clientX - startX)));
-      setRightWidth(next);
+      const next = Math.min(480, Math.max(220, startW + (ev.clientX - startX)));
+      setDrawerWidth(next);
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
@@ -188,8 +173,7 @@ export function App() {
     setEditingRecipe({ ...asset.recipe });
     setEditingCaption(asset.custom_caption ?? "");
     if (switchToStudio) {
-      setRightOpen(true);
-      setRightTab("studio");
+      setActiveMenu("studio");
     }
   };
 
@@ -524,23 +508,25 @@ export function App() {
 
   return (
     <div className="app-shell">
+      {/* Hidden Global File Input for Photo Upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".heic,.heif,image/*"
+        style={{ display: "none" }}
+        onChange={(e) => handleFileUpload(e.target.files)}
+      />
+
       {/* Top Header Bar */}
       <header className="top-bar">
         <div className="brand-group">
-          <button
-            className={leftOpen ? "panel-toggle-btn active" : "panel-toggle-btn"}
-            onClick={() => setLeftOpen((prev) => !prev)}
-            title="좌측 글 목록 & Git 패널 열기/접기"
-          >
-            ◧ 좌측 패널
-          </button>
           <div className="brand-logo">W</div>
           <div className="brand-text-wrap">
             <div className="brand-title">
               Writer <span className="rust-badge">Rust + Git</span>
             </div>
             <div className="workspace-path" title={workspacePath}>
-              📁 {workspacePath}
+              📁 {activePost ? `${activePost.title} (${activePost.slug}.md)` : workspacePath}
             </div>
           </div>
         </div>
@@ -573,436 +559,278 @@ export function App() {
         </div>
 
         <div className="top-actions">
-          <button
-            className="btn-secondary"
-            onClick={() => setShowStyleConfig((prev) => !prev)}
-          >
-            🎨 서식 설정
-          </button>
           <button className="btn-primary-copy" onClick={handleCopyTistoryHtml}>
-            📋 티스토리용 서식 복사
-          </button>
-          <button
-            className={rightOpen ? "panel-toggle-btn active" : "panel-toggle-btn"}
-            onClick={() => setRightOpen((prev) => !prev)}
-            title="우측 사진 스튜디오 & 트레이 열기/접기"
-          >
-            ◨ 사진창
+            📋 티스토리용 서식 복사 (Cmd+V)
           </button>
         </div>
       </header>
 
-      {/* Collapsible Tistory Style Customizer Bar */}
-      {showStyleConfig && (
-        <div className="style-config-bar">
-          <div className="style-field">
-            <label>제목1(H1)</label>
-            <input
-              type="number"
-              value={preset.h1_size_px}
-              min={20}
-              max={42}
-              onChange={(e) =>
-                handlePresetChange({ ...preset, h1_size_px: Number(e.target.value) })
-              }
-            />
-            <span>px</span>
-          </div>
-          <div className="style-field">
-            <label>제목2(H2)</label>
-            <input
-              type="number"
-              value={preset.h2_size_px}
-              min={18}
-              max={34}
-              onChange={(e) =>
-                handlePresetChange({ ...preset, h2_size_px: Number(e.target.value) })
-              }
-            />
-            <span>px</span>
-          </div>
-          <div className="style-field">
-            <label>본문 기본</label>
-            <input
-              type="number"
-              value={preset.body_font_size_px}
-              min={13}
-              max={24}
-              onChange={(e) =>
-                handlePresetChange({ ...preset, body_font_size_px: Number(e.target.value) })
-              }
-            />
-            <span>px</span>
-          </div>
-          <div className="style-field">
-            <label>줄간격</label>
-            <input
-              type="number"
-              step="0.05"
-              value={preset.line_height}
-              min={1.4}
-              max={2.4}
-              onChange={(e) =>
-                handlePresetChange({ ...preset, line_height: Number(e.target.value) })
-              }
-            />
-          </div>
-          <div className="style-field">
-            <label>포인트 색상</label>
-            <input
-              type="color"
-              value={preset.accent_color}
-              onChange={(e) => handlePresetChange({ ...preset, accent_color: e.target.value })}
-            />
-          </div>
-          <div className="style-field">
-            <label>코드 테마</label>
-            <select
-              value={preset.code_theme}
-              onChange={(e) => handlePresetChange({ ...preset, code_theme: e.target.value })}
-            >
-              <option value="base16-ocean.dark">Ocean Dark</option>
-              <option value="InspiredGitHub">GitHub Light</option>
-              <option value="Solarized (dark)">Solarized Dark</option>
-              <option value="Solarized (light)">Solarized Light</option>
-            </select>
-          </div>
-        </div>
-      )}
-
-      {/* Main Flex Workspace with Draggable Splitters */}
+      {/* Main Body: Left Icon Menu Bar + Collapsible Left Drawer + Main Editor */}
       <div className="workspace-flex">
-        {/* LEFT SIDEBAR: Posts & Git Version Timeline */}
-        {leftOpen && (
+        {/* LEFT ICON ACTIVITY MENU BAR */}
+        <nav className="left-activity-bar" aria-label="좌측 기능 메뉴바">
+          <button
+            className={activeMenu === "posts" ? "activity-btn active" : "activity-btn"}
+            onClick={() => toggleMenuTab("posts")}
+            title="내 블로그 글 목록"
+          >
+            <span className="activity-icon">📄</span>
+            <span className="activity-label">글 목록</span>
+          </button>
+
+          <button
+            className={activeMenu === "git" ? "activity-btn active" : "activity-btn"}
+            onClick={() => toggleMenuTab("git")}
+            title="Git 버전 스냅샷 & 원격 저장소 연결"
+          >
+            <span className="activity-icon">🌿</span>
+            <span className="activity-label">커밋·Git</span>
+            {hasChanges && <span className="activity-dot dirty" />}
+          </button>
+
+          <button
+            className={activeMenu === "tray" ? "activity-btn active" : "activity-btn"}
+            onClick={() => toggleMenuTab("tray")}
+            title="가공 완료 사진 트레이 (티스토리 복사용)"
+          >
+            <span className="activity-icon">🖼️</span>
+            <span className="activity-label">사진 트레이</span>
+            <span className="activity-count">{assets.length}</span>
+          </button>
+
+          <button
+            className={activeMenu === "studio" ? "activity-btn active" : "activity-btn"}
+            onClick={() => toggleMenuTab("studio")}
+            title="아이폰 사진 필터 · 폴라로이드 · 확장자 변환"
+          >
+            <span className="activity-icon">🎞️</span>
+            <span className="activity-label">사진 편집</span>
+          </button>
+
+          <button
+            className={activeMenu === "style" ? "activity-btn active" : "activity-btn"}
+            onClick={() => toggleMenuTab("style")}
+            title="티스토리 글자 크기 · 줄간격 · 코드 테마 설정"
+          >
+            <span className="activity-icon">🎨</span>
+            <span className="activity-label">서식 설정</span>
+          </button>
+        </nav>
+
+        {/* UNIFIED LEFT SIDEBAR DRAWER */}
+        {activeMenu !== null && (
           <>
-            <aside className="left-sidebar" style={{ width: `${leftWidth}px` }}>
-              <div className="sidebar-section">
-                <div className="section-header">
-                  <span>📄 내 블로그 글</span>
-                  <button
-                    className="btn-mini"
-                    onClick={() => setShowNewPostInput((prev) => !prev)}
-                  >
-                    + 새 글
-                  </button>
-                </div>
-                {showNewPostInput && (
-                  <div className="new-post-box">
-                    <input
-                      type="text"
-                      placeholder="새 글 제목 입력..."
-                      value={newPostTitle}
-                      onChange={(e) => setNewPostTitle(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleCreatePost()}
-                    />
-                    <button onClick={handleCreatePost}>생성</button>
-                  </div>
-                )}
-                <div className="post-list">
-                  {posts.map((p) => (
-                    <button
-                      key={p.slug}
-                      className={
-                        activePost?.slug === p.slug ? "post-item active" : "post-item"
-                      }
-                      onClick={() => handleSelectPost(p.slug)}
-                    >
-                      <div className="post-item-title">{p.title}</div>
-                      <div className="post-item-slug">{p.slug}.md</div>
-                    </button>
-                  ))}
-                </div>
+            <aside className="left-drawer" style={{ width: `${drawerWidth}px` }}>
+              <div className="drawer-header">
+                <span className="drawer-title">
+                  {activeMenu === "posts" && "📄 내 블로그 글 목록"}
+                  {activeMenu === "git" && "🌿 Git 커밋 & 버전 관리"}
+                  {activeMenu === "tray" && `🖼️ 사진 트레이 (${assets.length})`}
+                  {activeMenu === "studio" && "🎞️ 사진 필터 · 변환 스튜디오"}
+                  {activeMenu === "style" && "🎨 티스토리 서식 설정"}
+                </span>
+                <button
+                  className="drawer-close-btn"
+                  onClick={() => setActiveMenu(null)}
+                  title="패널 닫기"
+                >
+                  ✕
+                </button>
               </div>
 
-              <div className="sidebar-section git-section">
-                <div className="section-header">
-                  <span>🌿 Git 버전 관리</span>
-                  <span className={hasChanges ? "git-status-dirty" : "git-status-clean"}>
-                    {hasChanges ? "● 수정됨" : "✓ 저장됨"}
-                  </span>
-                </div>
-
-                {/* Git Remote Link & Sync Box */}
-                <div className="git-remote-card">
-                  <div className="git-remote-top">
-                    <span className="git-remote-label">
-                      🔗 원격 저장소 ({gitRemote.branch})
-                    </span>
+              {/* TAB 1: POSTS */}
+              {activeMenu === "posts" && (
+                <div className="drawer-body">
+                  <div className="section-header">
+                    <span>저장된 글 ({posts.length})</span>
                     <button
                       className="btn-mini"
-                      onClick={() => setShowRemoteInput((prev) => !prev)}
+                      onClick={() => setShowNewPostInput((prev) => !prev)}
                     >
-                      {gitRemote.remote_url ? "주소 변경" : "깃 링크 연결"}
+                      + 새 글 작성
                     </button>
                   </div>
-                  <div className="git-remote-url" title={gitRemote.remote_url ?? ""}>
-                    {gitRemote.remote_url
-                      ? gitRemote.remote_url
-                      : "연결된 원격 저장소 없음 (로컬 전용)"}
-                  </div>
-
-                  {showRemoteInput && (
-                    <div className="git-remote-form">
+                  {showNewPostInput && (
+                    <div className="new-post-box">
                       <input
                         type="text"
-                        placeholder="https://github.com/아이디/저장소.git"
-                        value={remoteUrlInput}
-                        onChange={(e) => setRemoteUrlInput(e.target.value)}
+                        placeholder="새 글 제목 입력..."
+                        value={newPostTitle}
+                        onChange={(e) => setNewPostTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleCreatePost()}
                       />
-                      <input
-                        type="password"
-                        placeholder="(선택) GitHub 토큰 ghp_..."
-                        value={remoteTokenInput}
-                        onChange={(e) => setRemoteTokenInput(e.target.value)}
-                      />
-                      <button className="btn-save-remote" onClick={handleSaveGitRemote}>
-                        원격 주소 저장
-                      </button>
+                      <button onClick={handleCreatePost}>생성</button>
                     </div>
                   )}
-
-                  {gitRemote.remote_url && (
-                    <div className="git-sync-btns">
-                      <button disabled={isBusy} onClick={handlePushRemote}>
-                        ⬆️ Push (백업)
+                  <div className="post-list">
+                    {posts.map((p) => (
+                      <button
+                        key={p.slug}
+                        className={
+                          activePost?.slug === p.slug ? "post-item active" : "post-item"
+                        }
+                        onClick={() => handleSelectPost(p.slug)}
+                      >
+                        <div className="post-item-title">{p.title}</div>
+                        <div className="post-item-slug">{p.slug}.md</div>
                       </button>
-                      <button disabled={isBusy} onClick={handlePullRemote}>
-                        ⬇️ Pull (가져오기)
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="git-commit-box">
-                  <input
-                    type="text"
-                    disabled={!hasChanges}
-                    placeholder={
-                      hasChanges
-                        ? "변경 메모 입력 (예: 본문 수정)"
-                        : "변경된 내용이 없습니다"
-                    }
-                    value={commitMessage}
-                    onChange={(e) => setCommitMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleCreateSnapshot()}
-                  />
-                  <button
-                    className={hasChanges ? "btn-git-commit" : "btn-git-commit disabled"}
-                    disabled={!hasChanges}
-                    onClick={handleCreateSnapshot}
-                  >
-                    {hasChanges
-                      ? "📌 변경사항 스냅샷 찍기"
-                      : "✓ 변경사항 없음 (스냅샷 완료)"}
-                  </button>
-                </div>
-
-                <div className="snapshot-list">
-                  {snapshots.map((snap, idx) => {
-                    const isCurrentHead = idx === 0 && !hasChanges;
-                    return (
-                      <div key={snap.id} className="snapshot-card">
-                        <div className="snapshot-top">
-                          <span className="snapshot-hash">{snap.short_id}</span>
-                          {isCurrentHead && (
-                            <span className="current-head-badge">현재 버전</span>
-                          )}
-                          <span className="snapshot-time">
-                            {new Date(snap.timestamp_iso).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit",
-                            })}
-                          </span>
-                        </div>
-                        <div className="snapshot-msg">{snap.message}</div>
-                        <div className="snapshot-actions">
-                          <button onClick={() => handleViewDiff(snap)}>
-                            🔍 변경점 비교
-                          </button>
-                          <button
-                            disabled={isCurrentHead}
-                            onClick={() => handleRollbackSnapshot(snap)}
-                          >
-                            {isCurrentHead ? "현재 적용됨" : "⏪ 이 버전으로 복원"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </aside>
-            <div
-              className="resizer-vertical"
-              onMouseDown={startResizeLeft}
-              title="드래그하여 좌측 패널 너비 조절"
-            />
-          </>
-        )}
-
-        {/* CENTER PANE: Editor Area */}
-        <main className="center-editor-area" ref={centerAreaRef}>
-          {viewMode === "visual" && (
-            <div className="single-pane">
-              {renderVisualToolbar()}
-              <div className="visual-editor-scroll wide">
-                {renderVisualDocumentCanvas()}
-              </div>
-            </div>
-          )}
-
-          {viewMode === "code" && (
-            <div className="single-pane">
-              <div className="pane-toolbar">
-                <span className="pane-title">💻 마크다운 직접 편집</span>
-                <span className="pane-hint">
-                  작성한 마크다운은 일반 편집 모드 및 티스토리 서식과 실시간 동기화됩니다.
-                </span>
-              </div>
-              <textarea
-                className="markdown-textarea full"
-                value={markdownText}
-                onChange={(e) => syncFromMarkdown(e.target.value)}
-              />
-            </div>
-          )}
-
-          {viewMode === "split" && (
-            <div className="split-flex-container">
-              <div
-                className="split-pane"
-                style={{ width: `${splitPercent}%`, flex: "none" }}
-              >
-                {renderVisualToolbar()}
-                <div className="visual-editor-scroll">
-                  {renderVisualDocumentCanvas()}
-                </div>
-              </div>
-
-              <div
-                className="resizer-vertical"
-                onMouseDown={startResizeSplit}
-                title="드래그하여 분할 화면 비율 조절"
-              />
-
-              <div className="split-pane" style={{ flex: 1 }}>
-                <div className="pane-toolbar">
-                  <span className="pane-title">💻 마크다운 원문 & 실시간 미리보기</span>
-                </div>
-                <div className="split-right-vertical">
-                  <textarea
-                    className="markdown-textarea compact"
-                    value={markdownText}
-                    onChange={(e) => syncFromMarkdown(e.target.value)}
-                    placeholder="마크다운을 직접 입력하면 좌측 일반 에디터와 실시간 동기화됩니다..."
-                  />
-                  <div className="tistory-live-preview-wrapper">
-                    <div className="preview-sticky-label">
-                      티스토리 붙여넣기 미리보기
-                    </div>
-                    <div
-                      className="tistory-preview-canvas"
-                      dangerouslySetInnerHTML={{ __html: previewHtml }}
-                    />
+                    ))}
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {viewMode === "tistory" && (
-            <div className="split-flex-container">
-              <div
-                className="split-pane"
-                style={{ width: `${splitPercent}%`, flex: "none" }}
-              >
-                <div className="pane-toolbar">
-                  <span className="pane-title">👀 티스토리 붙여넣기 실제 결과 미리보기</span>
+              {/* TAB 2: GIT COMMIT & TIMELINE */}
+              {activeMenu === "git" && (
+                <div className="drawer-body">
+                  <div className="section-header">
+                    <span>작업 상태</span>
+                    <span className={hasChanges ? "git-status-dirty" : "git-status-clean"}>
+                      {hasChanges ? "● 수정됨 (커밋 가능)" : "✓ 변경사항 없음"}
+                    </span>
+                  </div>
+
+                  <div className="git-commit-box">
+                    <input
+                      type="text"
+                      disabled={!hasChanges}
+                      placeholder={
+                        hasChanges
+                          ? "커밋 메모 입력 (예: 사진 추가 및 초안 작성)"
+                          : "수정된 내용이 없습니다"
+                      }
+                      value={commitMessage}
+                      onChange={(e) => setCommitMessage(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleCreateSnapshot()}
+                    />
+                    <button
+                      className={hasChanges ? "btn-git-commit" : "btn-git-commit disabled"}
+                      disabled={!hasChanges}
+                      onClick={handleCreateSnapshot}
+                    >
+                      {hasChanges
+                        ? "📌 변경사항 커밋 (스냅샷 저장)"
+                        : "✓ 변경사항 없음 (최신 상태)"}
+                    </button>
+                  </div>
+
+                  {/* Git Remote Link & Sync Box */}
+                  <div className="git-remote-card">
+                    <div className="git-remote-top">
+                      <span className="git-remote-label">
+                        🔗 원격 저장소 ({gitRemote.branch})
+                      </span>
+                      <button
+                        className="btn-mini"
+                        onClick={() => setShowRemoteInput((prev) => !prev)}
+                      >
+                        {gitRemote.remote_url ? "주소 변경" : "깃 링크 연결"}
+                      </button>
+                    </div>
+                    <div className="git-remote-url" title={gitRemote.remote_url ?? ""}>
+                      {gitRemote.remote_url
+                        ? gitRemote.remote_url
+                        : "연결된 원격 저장소 없음 (로컬 전용)"}
+                    </div>
+
+                    {showRemoteInput && (
+                      <div className="git-remote-form">
+                        <input
+                          type="text"
+                          placeholder="https://github.com/아이디/저장소.git"
+                          value={remoteUrlInput}
+                          onChange={(e) => setRemoteUrlInput(e.target.value)}
+                        />
+                        <input
+                          type="password"
+                          placeholder="(선택) GitHub 토큰 ghp_..."
+                          value={remoteTokenInput}
+                          onChange={(e) => setRemoteTokenInput(e.target.value)}
+                        />
+                        <button className="btn-save-remote" onClick={handleSaveGitRemote}>
+                          원격 주소 저장
+                        </button>
+                      </div>
+                    )}
+
+                    {gitRemote.remote_url && (
+                      <div className="git-sync-btns">
+                        <button disabled={isBusy} onClick={handlePushRemote}>
+                          ⬆️ Push (백업)
+                        </button>
+                        <button disabled={isBusy} onClick={handlePullRemote}>
+                          ⬇️ Pull (가져오기)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="section-header" style={{ marginTop: "6px" }}>
+                    <span>커밋 히스토리 ({snapshots.length})</span>
+                  </div>
+
+                  <div className="snapshot-list">
+                    {snapshots.map((snap, idx) => {
+                      const isCurrentHead = idx === 0 && !hasChanges;
+                      return (
+                        <div key={snap.id} className="snapshot-card">
+                          <div className="snapshot-top">
+                            <span className="snapshot-hash">{snap.short_id}</span>
+                            {isCurrentHead && (
+                              <span className="current-head-badge">현재 버전</span>
+                            )}
+                            <span className="snapshot-time">
+                              {new Date(snap.timestamp_iso).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          <div className="snapshot-msg">{snap.message}</div>
+                          <div className="snapshot-actions">
+                            <button onClick={() => handleViewDiff(snap)}>
+                              🔍 변경점 비교
+                            </button>
+                            <button
+                              disabled={isCurrentHead}
+                              onClick={() => handleRollbackSnapshot(snap)}
+                            >
+                              {isCurrentHead ? "현재 적용됨" : "⏪ 이 버전으로 복원"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="visual-editor-scroll">
+              )}
+
+              {/* TAB 3: PHOTO TRAY */}
+              {activeMenu === "tray" && (
+                <div className="drawer-body">
                   <div
-                    className="tistory-preview-canvas"
-                    dangerouslySetInnerHTML={{ __html: previewHtml }}
-                  />
-                </div>
-              </div>
+                    className="photo-dropzone"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleFileUpload(e.dataTransfer.files);
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <div className="dropzone-title">
+                      📸 아이폰 사진(HEIC/JPG/PNG) 추가·드래그
+                    </div>
+                    <div className="dropzone-sub">
+                      GPS 자동 삭제 · EXIF 추출 · 필터 · 확장자 변환
+                    </div>
+                  </div>
 
-              <div
-                className="resizer-vertical"
-                onMouseDown={startResizeSplit}
-                title="드래그하여 분할 화면 비율 조절"
-              />
-
-              <div className="split-pane" style={{ flex: 1 }}>
-                <div className="pane-toolbar">
-                  <span className="pane-title">🔍 티스토리용 인라인 CSS HTML 코드</span>
-                  <button className="btn-mini" onClick={handleCopyTistoryHtml}>
-                    HTML 복사
-                  </button>
-                </div>
-                <textarea className="markdown-textarea full" readOnly value={copyHtml} />
-              </div>
-            </div>
-          )}
-        </main>
-
-        {/* RIGHT SIDEBAR: iPhone Image Studio & Processed Image Tray */}
-        {rightOpen && (
-          <>
-            <div
-              className="resizer-vertical"
-              onMouseDown={startResizeRight}
-              title="드래그하여 우측 사진창 너비 조절"
-            />
-            <aside className="right-sidebar" style={{ width: `${rightWidth}px` }}>
-              <div className="right-tabs">
-                <button
-                  className={rightTab === "tray" ? "right-tab active" : "right-tab"}
-                  onClick={() => setRightTab("tray")}
-                >
-                  🖼️ 사진 트레이 ({assets.length})
-                </button>
-                <button
-                  className={rightTab === "studio" ? "right-tab active" : "right-tab"}
-                  onClick={() => setRightTab("studio")}
-                >
-                  🎞️ 사진 필터·변환
-                </button>
-              </div>
-
-              <div
-                className="photo-dropzone"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  handleFileUpload(e.dataTransfer.files);
-                }}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".heic,.heif,image/*"
-                  style={{ display: "none" }}
-                  onChange={(e) => handleFileUpload(e.target.files)}
-                />
-                <div className="dropzone-title">
-                  📸 아이폰 사진(HEIC/JPG/PNG) 추가·드래그
-                </div>
-                <div className="dropzone-sub">
-                  GPS 자동 삭제 · EXIF 추출 · 필터 · 확장자 변환
-                </div>
-              </div>
-
-              {rightTab === "tray" ? (
-                <div className="tray-container">
                   <div className="tray-guide">
                     <strong>티스토리 사진 넣기:</strong>
                     <p>
                       1) 상단 <b>[티스토리용 서식 복사]</b> 후 티스토리에 <code>Cmd+V</code>
                       <br />
-                      2) 아래 트레이에서 <b>[이미지 복사]</b> 클릭 후 사진 자리에 <code>Cmd+V</code>!
+                      2) 아래 카드에서 <b>[이미지 복사]</b> 클릭 후 사진 자리에 <code>Cmd+V</code>!
                     </p>
                   </div>
 
@@ -1059,7 +887,7 @@ export function App() {
                                 handleSelectAsset(asset, true);
                               }}
                             >
-                              🎨 필터/확장자 편집
+                              🎞️ 필터/확장자 편집
                             </button>
                             <button
                               onClick={(e) => {
@@ -1075,8 +903,25 @@ export function App() {
                     ))}
                   </div>
                 </div>
-              ) : (
-                <div className="studio-container">
+              )}
+
+              {/* TAB 4: PHOTO STUDIO */}
+              {activeMenu === "studio" && (
+                <div className="drawer-body">
+                  <div
+                    className="photo-dropzone"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleFileUpload(e.dataTransfer.files);
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <div className="dropzone-title">
+                      📸 새 아이폰 사진(HEIC/JPG/PNG) 불러오기
+                    </div>
+                  </div>
+
                   {selectedAsset && editingRecipe ? (
                     <>
                       <div className="studio-preview-box">
@@ -1262,9 +1107,228 @@ export function App() {
                   )}
                 </div>
               )}
+
+              {/* TAB 5: TISTORY STYLE SETTINGS */}
+              {activeMenu === "style" && (
+                <div className="drawer-body">
+                  <div className="studio-controls">
+                    <div className="control-group">
+                      <label>대제목 (H1) 글자 크기 (px)</label>
+                      <input
+                        type="number"
+                        value={preset.h1_size_px}
+                        min={20}
+                        max={42}
+                        onChange={(e) =>
+                          handlePresetChange({
+                            ...preset,
+                            h1_size_px: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="control-group">
+                      <label>중제목 (H2) 글자 크기 (px)</label>
+                      <input
+                        type="number"
+                        value={preset.h2_size_px}
+                        min={18}
+                        max={34}
+                        onChange={(e) =>
+                          handlePresetChange({
+                            ...preset,
+                            h2_size_px: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="control-group">
+                      <label>소제목 (H3) 글자 크기 (px)</label>
+                      <input
+                        type="number"
+                        value={preset.h3_size_px}
+                        min={15}
+                        max={28}
+                        onChange={(e) =>
+                          handlePresetChange({
+                            ...preset,
+                            h3_size_px: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="control-group">
+                      <label>본문 기본 글자 크기 (px)</label>
+                      <input
+                        type="number"
+                        value={preset.body_font_size_px}
+                        min={13}
+                        max={24}
+                        onChange={(e) =>
+                          handlePresetChange({
+                            ...preset,
+                            body_font_size_px: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="control-group">
+                      <label>본문 줄간격 (Line Height)</label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        value={preset.line_height}
+                        min={1.4}
+                        max={2.4}
+                        onChange={(e) =>
+                          handlePresetChange({
+                            ...preset,
+                            line_height: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="control-group">
+                      <label>강조 포인트 색상</label>
+                      <input
+                        type="color"
+                        value={preset.accent_color}
+                        onChange={(e) =>
+                          handlePresetChange({ ...preset, accent_color: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="control-group">
+                      <label>코드 블록 구문 강조 테마</label>
+                      <select
+                        value={preset.code_theme}
+                        onChange={(e) =>
+                          handlePresetChange({ ...preset, code_theme: e.target.value })
+                        }
+                      >
+                        <option value="base16-ocean.dark">Ocean Dark (다크)</option>
+                        <option value="InspiredGitHub">GitHub Light (라이트)</option>
+                        <option value="Solarized (dark)">Solarized Dark</option>
+                        <option value="Solarized (light)">Solarized Light</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
             </aside>
+            <div
+              className="resizer-vertical"
+              onMouseDown={startResizeDrawer}
+              title="드래그하여 좌측 메뉴 패널 너비 조절"
+            />
           </>
         )}
+
+        {/* CENTER PANE: Full-Width Editor Area */}
+        <main className="center-editor-area" ref={centerAreaRef}>
+          {viewMode === "visual" && (
+            <div className="single-pane">
+              {renderVisualToolbar()}
+              <div className="visual-editor-scroll wide">
+                {renderVisualDocumentCanvas()}
+              </div>
+            </div>
+          )}
+
+          {viewMode === "code" && (
+            <div className="single-pane">
+              <div className="pane-toolbar">
+                <span className="pane-title">💻 마크다운 직접 편집</span>
+                <span className="pane-hint">
+                  작성한 마크다운은 일반 편집 모드 및 티스토리 서식과 실시간 동기화됩니다.
+                </span>
+              </div>
+              <textarea
+                className="markdown-textarea full"
+                value={markdownText}
+                onChange={(e) => syncFromMarkdown(e.target.value)}
+              />
+            </div>
+          )}
+
+          {viewMode === "split" && (
+            <div className="split-flex-container">
+              <div
+                className="split-pane"
+                style={{ width: `${splitPercent}%`, flex: "none" }}
+              >
+                {renderVisualToolbar()}
+                <div className="visual-editor-scroll">
+                  {renderVisualDocumentCanvas()}
+                </div>
+              </div>
+
+              <div
+                className="resizer-vertical"
+                onMouseDown={startResizeSplit}
+                title="드래그하여 분할 화면 비율 조절"
+              />
+
+              <div className="split-pane" style={{ flex: 1 }}>
+                <div className="pane-toolbar">
+                  <span className="pane-title">💻 마크다운 원문 & 실시간 미리보기</span>
+                </div>
+                <div className="split-right-vertical">
+                  <textarea
+                    className="markdown-textarea compact"
+                    value={markdownText}
+                    onChange={(e) => syncFromMarkdown(e.target.value)}
+                    placeholder="마크다운을 직접 입력하면 좌측 일반 에디터와 실시간 동기화됩니다..."
+                  />
+                  <div className="tistory-live-preview-wrapper">
+                    <div className="preview-sticky-label">
+                      티스토리 붙여넣기 미리보기
+                    </div>
+                    <div
+                      className="tistory-preview-canvas"
+                      dangerouslySetInnerHTML={{ __html: previewHtml }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {viewMode === "tistory" && (
+            <div className="split-flex-container">
+              <div
+                className="split-pane"
+                style={{ width: `${splitPercent}%`, flex: "none" }}
+              >
+                <div className="pane-toolbar">
+                  <span className="pane-title">👀 티스토리 붙여넣기 실제 결과 미리보기</span>
+                </div>
+                <div className="visual-editor-scroll">
+                  <div
+                    className="tistory-preview-canvas"
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                  />
+                </div>
+              </div>
+
+              <div
+                className="resizer-vertical"
+                onMouseDown={startResizeSplit}
+                title="드래그하여 분할 화면 비율 조절"
+              />
+
+              <div className="split-pane" style={{ flex: 1 }}>
+                <div className="pane-toolbar">
+                  <span className="pane-title">🔍 티스토리용 인라인 CSS HTML 코드</span>
+                  <button className="btn-mini" onClick={handleCopyTistoryHtml}>
+                    HTML 복사
+                  </button>
+                </div>
+                <textarea className="markdown-textarea full" readOnly value={copyHtml} />
+              </div>
+            </div>
+          )}
+        </main>
       </div>
 
       {/* Git Diff Viewer Modal */}
@@ -1303,7 +1367,6 @@ export function App() {
     </div>
   );
 
-  // Sticky Formatting Toolbar for the Continuous Visual Editor
   function renderVisualToolbar() {
     const currentType = focusedBlock?.type ?? "paragraph";
     const currentHeadingLevel =
@@ -1369,7 +1432,6 @@ export function App() {
           font_size_px: newSize === preset.body_font_size_px ? undefined : newSize,
         });
       } else if (focusedBlock.type === "heading") {
-        // Convert heading or adjust paragraph font size
         updateBlockAt(focusedBlockIdx, {
           type: "paragraph",
           text: focusedBlock.text,
@@ -1381,7 +1443,7 @@ export function App() {
     return (
       <div className="pane-toolbar rich-toolbar">
         <div className="toolbar-group">
-          <label className="toolbar-label">문단 스타일</label>
+          <label className="toolbar-label">스타일</label>
           <select
             className="toolbar-select"
             value={
@@ -1442,7 +1504,7 @@ export function App() {
 
         <div className="toolbar-group add-block-bar">
           <button onClick={() => fileInputRef.current?.click()}>
-            📸 새 사진 넣기
+            📸 사진 추가
           </button>
           <button
             onClick={() =>
@@ -1468,7 +1530,6 @@ export function App() {
     );
   }
 
-  // Continuous Paper-like Document Canvas for Non-Technical Users
   function renderVisualDocumentCanvas() {
     return (
       <div className="document-paper">
@@ -1482,7 +1543,6 @@ export function App() {
               }
               onClick={() => setFocusedBlockIdx(idx)}
             >
-              {/* Subtle hover side controls for moving/deleting */}
               <div className="doc-row-gutter">
                 <button
                   onClick={(e) => {
@@ -1548,7 +1608,7 @@ export function App() {
                       fontSize: `${block.font_size_px ?? preset.body_font_size_px}px`,
                       lineHeight: preset.line_height,
                     }}
-                    placeholder="여기에 내용을 타이핑하세요... (상단 툴바에서 글자 크기를 바로 바꿀 수 있습니다)"
+                    placeholder="내용을 타이핑하세요... (상단 툴바에서 글자 크기를 바꿀 수 있습니다)"
                     rows={Math.max(1, block.text.split("\n").length)}
                     value={block.text}
                     onFocus={() => setFocusedBlockIdx(idx)}
@@ -1693,7 +1753,7 @@ export function App() {
                                 className="btn-edit-in-studio"
                                 onClick={() => handleSelectAsset(matched, true)}
                               >
-                                🎞️ 이 사진 필터·폴라로이드·확장자 변경하기
+                                🎞️ 좌측 사진 편집 메뉴에서 필터·폴라로이드·확장자 변경하기
                               </button>
                             )}
                           </div>
