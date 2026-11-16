@@ -226,4 +226,18 @@ export const api = {
       activeSlug,
       preset,
     }),
+  openCopyWindow: async (activeSlug?: string) => {
+    if (isTauriRuntime()) {
+      try {
+        return await invoke<{ opened: boolean }>("open_copy_window_cmd", {
+          activeSlug: activeSlug ?? null,
+        });
+      } catch {
+        // fallback below
+      }
+    }
+    const q = activeSlug ? `/?window=copy&slug=${encodeURIComponent(activeSlug)}` : "/?window=copy";
+    window.open(q, "writer-copy-window", "width=640,height=820");
+    return { opened: true };
+  },
 };

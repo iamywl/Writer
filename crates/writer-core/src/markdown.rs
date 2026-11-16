@@ -70,8 +70,8 @@ impl Default for TistoryStylePreset {
             h2_size_px: 23,
             h3_size_px: 19,
             h4_size_px: 17,
-            accent_color: "#2563eb".to_string(),
-            quote_bg_color: "#f8fafc".to_string(),
+            accent_color: "#18181b".to_string(),
+            quote_bg_color: "#fafafa".to_string(),
             code_theme: "base16-ocean.dark".to_string(),
         }
     }
@@ -535,15 +535,14 @@ pub fn compile_to_tistory_html(
                         .and_then(|m| m.preview_data_url.clone())
                         .unwrap_or_else(|| src.clone());
                     format!(
-                        r#"<img src="{}" alt="{}" style="max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 0 auto;" />"#,
+                        r#"<img src="{}" alt="{}" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 0 auto;" />"#,
                         escape_html(&img_src),
                         escape_html(&alt)
                     )
                 } else {
                     format!(
-                        r#"<div data-writer-tray-slot="{idx}" style="padding: 20px; border: 2px dashed {accent}; border-radius: 10px; background-color: #f8fafc; color: #334155; font-size: 14px; font-weight: 600; text-align: center;">📸 [사진 트레이 #{idx}: {file}] — 우측 트레이에서 원클릭 복사 후 이 자리에 붙여넣으세요</div>"#,
+                        r#"<div data-writer-tray-slot="{idx}" style="padding: 18px; border: 1px dashed #a1a1aa; border-radius: 6px; background-color: #fafafa; color: #3f3f46; font-size: 13px; font-weight: 500; text-align: center;">[사진 #{idx} : {file}]</div>"#,
                         idx = tray_idx,
-                        accent = preset.accent_color,
                         file = escape_html(&filename)
                     )
                 };
@@ -555,13 +554,13 @@ pub fn compile_to_tistory_html(
                     );
                     if let Some(exif) = exif_text {
                         caption_html.push_str(&format!(
-                            r#"<div style="display: inline-block; padding: 3px 10px; background-color: #f1f5f9; color: #475569; border-radius: 999px; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; font-weight: 500; margin-bottom: 4px;">📷 {}</div>"#,
+                            r#"<div style="display: inline-block; padding: 2px 9px; background-color: #f4f4f5; color: #52525b; border-radius: 4px; font-family: 'SF Mono', Menlo, monospace; font-size: 11.5px; font-weight: 500; margin-bottom: 4px; letter-spacing: -0.01em;">{}</div>"#,
                             escape_html(&exif)
                         ));
                     }
                     if let Some(cap) = cap_text {
                         caption_html.push_str(&format!(
-                            r#"<div style="color: #64748b; font-size: 13px; margin-top: 2px;">{}</div>"#,
+                            r#"<div style="color: #71717a; font-size: 13px; margin-top: 2px;">{}</div>"#,
                             escape_html(&cap)
                         ));
                     }

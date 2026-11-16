@@ -5,6 +5,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::Manager;
 use writer_core::{
     copy_image_bytes_to_clipboard, copy_rich_html_to_clipboard, GitRemoteStatus, GitSnapshotInfo,
     ImageAssetRecord, ImageRecipe, PostDocument, TistoryStylePreset, VisualBlock, WriterWorkspace,
@@ -527,6 +528,34 @@ fn pull_git_remote_cmd(
     handle_pull_git_remote(&state, &activeSlug, &preset)
 }
 
+#[tauri::command]
+fn open_copy_window_cmd(
+    app: tauri::AppHandle,
+    #[allow(non_snake_case)] activeSlug: Option<String>,
+) -> Result<Value, String> {
+    let query = match activeSlug {
+        Some(ref s) if !s.is_empty() => format!("index.html?window=copy&slug={}", s),
+        _ => "index.html?window=copy".to_string(),
+    };
+    if let Some(win) = app.get_webview_window("copy-window") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(json!({ "opened": true }));
+    }
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "copy-window",
+        tauri::WebviewUrl::App(query.into()),
+    )
+    .title("Writer — 복붙 전용 창")
+    .inner_size(640.0, 820.0)
+    .min_inner_size(420.0, 480.0)
+    .resizable(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+    Ok(json!({ "opened": true }))
+}
+
 // =========================================================================
 // Local HTTP RPC Fallback Server (127.0.0.1:14210)
 // =========================================================================
@@ -735,6 +764,7 @@ fn main() {
             set_git_remote_cmd,
             push_git_remote_cmd,
             pull_git_remote_cmd,
+            open_copy_window_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Writer Tauri application");

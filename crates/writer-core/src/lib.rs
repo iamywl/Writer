@@ -371,7 +371,7 @@ pub fn add(a: i32, b: i32) -> i32 {
         // Verify Processed Image Tray placeholder & EXIF camera caption
         assert!(html.contains("data-writer-tray-slot=\"1\""));
         assert!(html.contains("01_img_01.webp"));
-        assert!(html.contains("📷 iPhone 15 Pro · 24mm · f/1.78"));
+        assert!(html.contains("iPhone 15 Pro · 24mm · f/1.78"));
         assert!(html.contains("직접 입력한 사진 설명"));
     }
 

@@ -1,5 +1,31 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowDownLeft,
+  ArrowUp,
+  ArrowUpRight,
+  Check,
+  Code2,
+  Columns,
+  Copy,
+  ExternalLink,
+  FileText,
+  GitBranch,
+  GitCommit,
+  Image as ImageIcon,
+  Link2,
+  PenLine,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  Sliders,
+  Trash2,
+  Type,
+  Upload,
+  X,
+} from "lucide-react";
+import {
   api,
   FilterPreset,
   FrameStyle,
@@ -13,26 +39,307 @@ import {
   VisualBlock,
 } from "./api";
 
-type EditorViewMode = "visual" | "code" | "split" | "tistory";
+type EditorViewMode = "visual" | "code" | "split";
 type LeftMenuTab = "posts" | "git" | "tray" | "studio" | "style";
 
 const FILTER_LABELS: { value: FilterPreset; label: string; desc: string }[] = [
-  { value: "original", label: "Original", desc: "원본 색감" },
-  { value: "film_warm", label: "Film Warm", desc: "따스한 필름톤" },
-  { value: "vintage_fade", label: "Vintage Fade", desc: "매트 빈티지" },
-  { value: "monochrome", label: "Monochrome", desc: "클래식 고대비 흑백" },
-  { value: "vivid_pop", label: "Vivid Pop", desc: "선명한 색감 강조" },
-  { value: "cool_cinema", label: "Cool Cinema", desc: "차분한 시네마틱" },
+  { value: "original", label: "Original", desc: "원본" },
+  { value: "film_warm", label: "Film Warm", desc: "웜 필름" },
+  { value: "vintage_fade", label: "Vintage", desc: "매트 페이드" },
+  { value: "monochrome", label: "Mono", desc: "고대비 흑백" },
+  { value: "vivid_pop", label: "Vivid", desc: "선명한 채도" },
+  { value: "cool_cinema", label: "Cinema", desc: "시네마틱 쿨" },
 ];
 
 const FRAME_LABELS: { value: FrameStyle; label: string }[] = [
   { value: "none", label: "프레임 없음" },
-  { value: "polaroid", label: "폴라로이드 프레임 (하단 스탬프)" },
+  { value: "polaroid", label: "폴라로이드 프레임 (하단 각인)" },
   { value: "minimal_white", label: "미니멀 화이트 여백" },
-  { value: "rounded_shadow", label: "둥근 모서리 + 배경" },
+  { value: "rounded_shadow", label: "라운드 코너 + 배경" },
 ];
 
 export function App() {
+  const isCopyCompanionWindow =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("window") === "copy";
+
+  if (isCopyCompanionWindow) {
+    return <CopyCompanionWindow />;
+  }
+
+  return <MainEditorWindow />;
+}
+
+// ============================================================================
+// SEPARATE WINDOW: Dedicated Copy & Paste Companion Window (복붙 전용 윈도우)
+// ============================================================================
+function CopyCompanionWindow() {
+  const [posts, setPosts] = useState<PostDocument[]>([]);
+  const [activePost, setActivePost] = useState<PostDocument | null>(null);
+  const [assets, setAssets] = useState<ImageAssetRecord[]>([]);
+  const [preset, setPreset] = useState<TistoryStylePreset | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string>("");
+  const [copyHtml, setCopyHtml] = useState<string>("");
+  const [tab, setTab] = useState<"workflow" | "preview" | "html">("workflow");
+  const [copiedPost, setCopiedPost] = useState<boolean>(false);
+  const [copiedAssetIds, setCopiedAssetIds] = useState<Record<string, boolean>>({});
+  const [toast, setToast] = useState<string | null>(null);
+
+  const notify = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast((prev) => (prev === msg ? null : prev)), 2800);
+  };
+
+  const loadWorkspaceData = async (preferredSlug?: string) => {
+    try {
+      const boot = await api.getBootstrap();
+      setPosts(boot.posts);
+      setAssets(boot.assets);
+      setPreset(boot.default_preset);
+
+      const targetSlug =
+        preferredSlug ||
+        new URLSearchParams(window.location.search).get("slug") ||
+        boot.active_post.slug;
+
+      if (targetSlug && targetSlug !== boot.active_post.slug) {
+        const loaded = await api.loadPost(targetSlug, boot.default_preset);
+        setActivePost(loaded.post);
+        setPreviewHtml(loaded.preview_html);
+        setCopyHtml(loaded.copy_html);
+      } else {
+        setActivePost(boot.active_post);
+        setPreviewHtml(boot.preview_html);
+        setCopyHtml(boot.copy_html);
+      }
+    } catch (err: any) {
+      notify(`불러오기 오류: ${err.message}`);
+    }
+  };
+
+  useEffect(() => {
+    loadWorkspaceData();
+  }, []);
+
+  const handleSelectSlug = async (slug: string) => {
+    if (!preset) return;
+    try {
+      const loaded = await api.loadPost(slug, preset);
+      setActivePost(loaded.post);
+      setPreviewHtml(loaded.preview_html);
+      setCopyHtml(loaded.copy_html);
+      setCopiedPost(false);
+    } catch (err: any) {
+      notify(`글 전환 실패: ${err.message}`);
+    }
+  };
+
+  const handleCopyBody = async () => {
+    if (!activePost || !preset) return;
+    try {
+      const res = await api.copyTistoryHtml(activePost.markdown, preset);
+      if (navigator.clipboard && window.ClipboardItem) {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              "text/html": new Blob([res.html], { type: "text/html" }),
+              "text/plain": new Blob([activePost.markdown], { type: "text/plain" }),
+            }),
+          ]);
+        } catch {
+          // arboard already copied
+        }
+      }
+      setCopiedPost(true);
+      notify("본문 인라인 서식이 클립보드에 복사되었습니다. 티스토리에 Cmd+V 하세요.");
+    } catch (err: any) {
+      notify(`복사 실패: ${err.message}`);
+    }
+  };
+
+  const handleCopyImage = async (asset: ImageAssetRecord) => {
+    try {
+      await api.copyTrayImage(asset.asset_id);
+      setCopiedAssetIds((prev) => ({ ...prev, [asset.asset_id]: true }));
+      notify(`'${asset.original_filename}' 이미지가 클립보드에 복사되었습니다.`);
+    } catch (err: any) {
+      notify(`이미지 복사 실패: ${err.message}`);
+    }
+  };
+
+  const formatBytes = (bytes: number) =>
+    bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+
+  return (
+    <div className="companion-shell">
+      <header className="companion-header">
+        <div className="companion-title-row">
+          <div className="companion-title-group">
+            <span className="companion-badge">COPY WINDOW</span>
+            <h1>블로그 복붙 도우미</h1>
+          </div>
+          <button
+            className="icon-btn"
+            onClick={() => loadWorkspaceData(activePost?.slug)}
+            title="에디터 최신 내용 새로고침"
+          >
+            <RefreshCw size={14} strokeWidth={1.7} />
+            <span>새로고침</span>
+          </button>
+        </div>
+
+        <div className="companion-post-bar">
+          <select
+            className="companion-select"
+            value={activePost?.slug ?? ""}
+            onChange={(e) => handleSelectSlug(e.target.value)}
+          >
+            {posts.map((p) => (
+              <option key={p.slug} value={p.slug}>
+                {p.title} ({p.slug}.md)
+              </option>
+            ))}
+          </select>
+
+          <div className="companion-tabs">
+            <button
+              className={tab === "workflow" ? "comp-tab active" : "comp-tab"}
+              onClick={() => setTab("workflow")}
+            >
+              복붙 단계
+            </button>
+            <button
+              className={tab === "preview" ? "comp-tab active" : "comp-tab"}
+              onClick={() => setTab("preview")}
+            >
+              미리보기
+            </button>
+            <button
+              className={tab === "html" ? "comp-tab active" : "comp-tab"}
+              onClick={() => setTab("html")}
+            >
+              HTML 코드
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="companion-body">
+        {tab === "workflow" && (
+          <div className="companion-workflow">
+            <section className="comp-step-card">
+              <div className="comp-step-head">
+                <span className="step-num">STEP 1</span>
+                <span className="step-title">본문 서식 전체 복사</span>
+              </div>
+              <p className="step-desc">
+                제목 크기, 본문 줄간격, 인용구, 코드 하이라이팅이 모두 인라인 스타일로 복사됩니다.
+              </p>
+              <button
+                className={copiedPost ? "btn-comp-primary copied" : "btn-comp-primary"}
+                onClick={handleCopyBody}
+              >
+                {copiedPost ? (
+                  <>
+                    <Check size={15} strokeWidth={2} />
+                    <span>본문 서식 복사 완료 (다시 복사하려면 클릭)</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={15} strokeWidth={1.7} />
+                    <span>본문 서식 전체 복사 (Cmd+V용)</span>
+                  </>
+                )}
+              </button>
+            </section>
+
+            <section className="comp-step-card">
+              <div className="comp-step-head">
+                <span className="step-num">STEP 2</span>
+                <span className="step-title">
+                  가공 완료 사진 순서대로 복사 ({assets.length})
+                </span>
+              </div>
+              <p className="step-desc">
+                본문 붙여넣기 후 각 사진 위치에 아래 이미지를 순서대로 복사해 붙여넣으세요.
+              </p>
+
+              <div className="comp-photo-list">
+                {assets.map((asset, idx) => {
+                  const isDone = !!copiedAssetIds[asset.asset_id];
+                  return (
+                    <div
+                      key={asset.asset_id}
+                      className={isDone ? "comp-photo-row done" : "comp-photo-row"}
+                    >
+                      <img
+                        src={asset.preview_data_url}
+                        alt={asset.original_filename}
+                        className="comp-photo-thumb"
+                      />
+                      <div className="comp-photo-meta">
+                        <div className="comp-photo-top">
+                          <span className="comp-photo-idx">사진 #{idx + 1}</span>
+                          <span className="comp-photo-fmt">
+                            {asset.recipe.output_format.toUpperCase()} · {asset.width}×{asset.height}
+                          </span>
+                          <span className="comp-photo-size">
+                            {formatBytes(asset.processed_size_bytes)}
+                          </span>
+                        </div>
+                        {asset.exif_summary && (
+                          <div className="comp-photo-exif">{asset.exif_summary}</div>
+                        )}
+                      </div>
+                      <button
+                        className={isDone ? "btn-comp-img done" : "btn-comp-img"}
+                        onClick={() => handleCopyImage(asset)}
+                      >
+                        {isDone ? (
+                          <>
+                            <Check size={14} strokeWidth={2} />
+                            <span>복사됨</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={14} strokeWidth={1.7} />
+                            <span>이미지 복사</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {tab === "preview" && (
+          <div className="companion-preview-box">
+            <div
+              className="tistory-preview-canvas"
+              dangerouslySetInnerHTML={{ __html: previewHtml }}
+            />
+          </div>
+        )}
+
+        {tab === "html" && (
+          <div className="companion-html-box">
+            <textarea className="markdown-textarea full" readOnly value={copyHtml} />
+          </div>
+        )}
+      </main>
+
+      {toast && <div className="toast-banner">{toast}</div>}
+    </div>
+  );
+}
+
+// ============================================================================
+// MAIN WINDOW: Clean Editorial Workspace
+// ============================================================================
+function MainEditorWindow() {
   const [workspacePath, setWorkspacePath] = useState<string>("");
   const [posts, setPosts] = useState<PostDocument[]>([]);
   const [activePost, setActivePost] = useState<PostDocument | null>(null);
@@ -61,7 +368,7 @@ export function App() {
   const [remoteTokenInput, setRemoteTokenInput] = useState<string>("");
 
   const [preset, setPreset] = useState<TistoryStylePreset>({
-    name: "Tistory Modern Clean",
+    name: "Editorial Clean",
     font_family:
       "'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
     body_font_size_px: 16,
@@ -70,18 +377,16 @@ export function App() {
     h2_size_px: 23,
     h3_size_px: 19,
     h4_size_px: 17,
-    accent_color: "#2563eb",
-    quote_bg_color: "#f8fafc",
+    accent_color: "#18181b",
+    quote_bg_color: "#fafafa",
     code_theme: "base16-ocean.dark",
   });
 
   const [previewHtml, setPreviewHtml] = useState<string>("");
-  const [copyHtml, setCopyHtml] = useState<string>("");
   const [viewMode, setViewMode] = useState<EditorViewMode>("visual");
 
-  // Unified Left Menu Bar & Drawer State
   const [activeMenu, setActiveMenu] = useState<LeftMenuTab | null>("posts");
-  const [drawerWidth, setDrawerWidth] = useState<number>(310);
+  const [drawerWidth, setDrawerWidth] = useState<number>(296);
   const [splitPercent, setSplitPercent] = useState<number>(50);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -96,7 +401,7 @@ export function App() {
     setToast(msg);
     window.setTimeout(() => {
       setToast((prev) => (prev === msg ? null : prev));
-    }, 3400);
+    }, 3200);
   };
 
   useEffect(() => {
@@ -122,7 +427,6 @@ export function App() {
         }
         setPreset(boot.default_preset);
         setPreviewHtml(boot.preview_html);
-        setCopyHtml(boot.copy_html);
       })
       .catch((err) => {
         showToastMessage(`초기화 오류: ${err.message}`);
@@ -138,7 +442,7 @@ export function App() {
     const startX = e.clientX;
     const startW = drawerWidth;
     const onMove = (ev: MouseEvent) => {
-      const next = Math.min(480, Math.max(220, startW + (ev.clientX - startX)));
+      const next = Math.min(460, Math.max(220, startW + (ev.clientX - startX)));
       setDrawerWidth(next);
     };
     const onUp = () => {
@@ -185,7 +489,6 @@ export function App() {
       setMarkdownText(res.post.markdown);
       setVisualBlocks(res.post.blocks);
       setPreviewHtml(res.preview_html);
-      setCopyHtml(res.copy_html);
       setHasChanges(res.has_changes);
     } catch (err: any) {
       showToastMessage(`글 불러오기 실패: ${err.message}`);
@@ -207,11 +510,10 @@ export function App() {
       setMarkdownText(res.post.markdown);
       setVisualBlocks(res.post.blocks);
       setPreviewHtml(res.preview_html);
-      setCopyHtml(res.copy_html);
       setHasChanges(res.has_changes);
       setNewPostTitle("");
       setShowNewPostInput(false);
-      showToastMessage(`새 포스트 '${res.post.title}' 생성 완료`);
+      showToastMessage(`새 글 '${res.post.title}' 생성 완료`);
     } catch (err: any) {
       showToastMessage(`새 글 생성 실패: ${err.message}`);
     }
@@ -226,7 +528,6 @@ export function App() {
       setPosts(res.posts);
       setVisualBlocks(res.post.blocks);
       setPreviewHtml(res.preview_html);
-      setCopyHtml(res.copy_html);
       setHasChanges(res.has_changes);
     } catch (err: any) {
       showToastMessage(`동기화 오류: ${err.message}`);
@@ -242,7 +543,6 @@ export function App() {
       setPosts(res.posts);
       setMarkdownText(res.post.markdown);
       setPreviewHtml(res.preview_html);
-      setCopyHtml(res.copy_html);
       setHasChanges(res.has_changes);
     } catch (err: any) {
       showToastMessage(`저장 오류: ${err.message}`);
@@ -317,7 +617,7 @@ export function App() {
       setHasChanges(res.has_changes);
       handleSelectAsset(res.asset, true);
       showToastMessage(
-        `📸 '${file.name}' 추가 완료! GPS 위치정보 삭제 및 ${res.asset.recipe.output_format.toUpperCase()} 변환됨`
+        `'${file.name}' 추가 및 GPS 메타데이터 제거 완료 (${res.asset.recipe.output_format.toUpperCase()})`
       );
     } catch (err: any) {
       showToastMessage(`이미지 처리 실패: ${err.message}`);
@@ -339,10 +639,9 @@ export function App() {
       );
       setAssets(res.assets);
       setPreviewHtml(res.preview_html);
-      setCopyHtml(res.copy_html);
       setHasChanges(res.has_changes);
       showToastMessage(
-        `✨ 필터·프레임·확장자(${res.asset.recipe.output_format.toUpperCase()}) 적용 완료!`
+        `필터·프레임·확장자(${res.asset.recipe.output_format.toUpperCase()}) 렌더링 완료`
       );
     } catch (err: any) {
       showToastMessage(`레시피 적용 실패: ${err.message}`);
@@ -369,21 +668,17 @@ export function App() {
       const res = await api.copyTistoryHtml(markdownText, preset);
       if (navigator.clipboard && window.ClipboardItem) {
         try {
-          const htmlBlob = new Blob([res.html], { type: "text/html" });
-          const textBlob = new Blob([markdownText], { type: "text/plain" });
           await navigator.clipboard.write([
             new ClipboardItem({
-              "text/html": htmlBlob,
-              "text/plain": textBlob,
+              "text/html": new Blob([res.html], { type: "text/html" }),
+              "text/plain": new Blob([markdownText], { type: "text/plain" }),
             }),
           ]);
         } catch {
           // OS native arboard clipboard already succeeded
         }
       }
-      showToastMessage(
-        "📋 티스토리용 서식(인라인 HTML + 코드 색상) 복사 완료! 티스토리 에디터에 바로 붙여넣기(Cmd+V) 하세요."
-      );
+      showToastMessage("인라인 서식이 클립보드에 복사되었습니다. 블로그 에디터에 Cmd+V 하세요.");
     } catch (err: any) {
       showToastMessage(`클립보드 복사 실패: ${err.message}`);
     }
@@ -393,16 +688,24 @@ export function App() {
     try {
       const res = await api.copyTrayImage(asset.asset_id);
       showToastMessage(
-        `🖼️ 가공된 사진(${res.width}×${res.height})이 클립보드에 복사되었습니다! 티스토리 사진 자리에 바로 Cmd+V 하세요.`
+        `가공된 사진(${res.width}×${res.height})이 클립보드에 복사되었습니다.`
       );
     } catch (err: any) {
       showToastMessage(`이미지 복사 실패: ${err.message}`);
     }
   };
 
+  const handleOpenCopyWindow = async () => {
+    try {
+      await api.openCopyWindow(activePost?.slug);
+    } catch (err: any) {
+      showToastMessage(`복붙 창 열기 실패: ${err.message}`);
+    }
+  };
+
   const handleCreateSnapshot = async () => {
     if (!hasChanges) {
-      showToastMessage("변경된 내용이 없습니다. 글이나 사진을 수정한 뒤 스냅샷을 저장해 주세요.");
+      showToastMessage("변경된 내용이 없습니다.");
       return;
     }
     const msg = commitMessage.trim() || `버전 스냅샷 (${new Date().toLocaleTimeString()})`;
@@ -411,7 +714,7 @@ export function App() {
       setSnapshots(res.snapshots);
       setHasChanges(false);
       setCommitMessage("");
-      showToastMessage(`📌 Git 스냅샷 저장 완료: [${res.snapshot.short_id}] ${res.snapshot.message}`);
+      showToastMessage(`스냅샷 저장 완료: [${res.snapshot.short_id}] ${res.snapshot.message}`);
     } catch (err: any) {
       showToastMessage(`${err.message}`);
     }
@@ -441,9 +744,8 @@ export function App() {
       setSnapshots(boot.snapshots);
       setHasChanges(boot.git_remote.has_changes);
       setPreviewHtml(boot.preview_html);
-      setCopyHtml(boot.copy_html);
       setDiffModal(null);
-      showToastMessage(`⏪ 스냅샷 [${snap.short_id}] 상태로 복원되었습니다!`);
+      showToastMessage(`스냅샷 [${snap.short_id}] 상태로 복원되었습니다.`);
     } catch (err: any) {
       showToastMessage(`${err.message}`);
     }
@@ -456,7 +758,7 @@ export function App() {
       setRemoteTokenInput("");
       setShowRemoteInput(false);
       if (res.git_remote.remote_url) {
-        showToastMessage(`🔗 Git 원격 저장소 연결 완료: ${res.git_remote.remote_url}`);
+        showToastMessage(`원격 저장소 연결 완료: ${res.git_remote.remote_url}`);
       } else {
         showToastMessage("원격 저장소 연결이 해제되었습니다.");
       }
@@ -469,7 +771,7 @@ export function App() {
     setIsBusy(true);
     try {
       const res = await api.pushGitRemote();
-      showToastMessage(`⬆️ ${res.message}`);
+      showToastMessage(res.message);
     } catch (err: any) {
       showToastMessage(`Push 오류: ${err.message}`);
     } finally {
@@ -490,8 +792,7 @@ export function App() {
       setSnapshots(boot.snapshots);
       setHasChanges(boot.git_remote.has_changes);
       setPreviewHtml(boot.preview_html);
-      setCopyHtml(boot.copy_html);
-      showToastMessage("⬇️ 원격 저장소에서 최신 글과 이미지를 가져왔습니다!");
+      showToastMessage("원격 저장소에서 최신 변경사항을 가져왔습니다.");
     } catch (err: any) {
       showToastMessage(`Pull 오류: ${err.message}`);
     } finally {
@@ -499,16 +800,13 @@ export function App() {
     }
   };
 
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  };
+  const formatBytes = (bytes: number) =>
+    bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 
   const focusedBlock = visualBlocks[focusedBlockIdx] ?? null;
 
   return (
     <div className="app-shell">
-      {/* Hidden Global File Input for Photo Upload */}
       <input
         ref={fileInputRef}
         type="file"
@@ -517,17 +815,16 @@ export function App() {
         onChange={(e) => handleFileUpload(e.target.files)}
       />
 
-      {/* Top Header Bar */}
+      {/* Minimalist Editorial Top Bar */}
       <header className="top-bar">
         <div className="brand-group">
-          <div className="brand-logo">W</div>
+          <div className="brand-mark">W</div>
           <div className="brand-text-wrap">
-            <div className="brand-title">
-              Writer <span className="rust-badge">Rust + Git</span>
-            </div>
-            <div className="workspace-path" title={workspacePath}>
-              📁 {activePost ? `${activePost.title} (${activePost.slug}.md)` : workspacePath}
-            </div>
+            <span className="brand-title">Writer</span>
+            <span className="brand-divider">/</span>
+            <span className="workspace-path" title={workspacePath}>
+              {activePost ? activePost.title : "Workspace"}
+            </span>
           </div>
         </div>
 
@@ -536,54 +833,55 @@ export function App() {
             className={viewMode === "visual" ? "mode-btn active" : "mode-btn"}
             onClick={() => setViewMode("visual")}
           >
-            ✍️ 일반 편집
+            <PenLine size={13} strokeWidth={1.7} />
+            <span>일반 편집</span>
           </button>
           <button
             className={viewMode === "code" ? "mode-btn active" : "mode-btn"}
             onClick={() => setViewMode("code")}
           >
-            💻 마크다운 편집
+            <Code2 size={13} strokeWidth={1.7} />
+            <span>마크다운</span>
           </button>
           <button
             className={viewMode === "split" ? "mode-btn active" : "mode-btn"}
             onClick={() => setViewMode("split")}
           >
-            📐 분할 보기
-          </button>
-          <button
-            className={viewMode === "tistory" ? "mode-btn active" : "mode-btn"}
-            onClick={() => setViewMode("tistory")}
-          >
-            👀 티스토리 미리보기
+            <Columns size={13} strokeWidth={1.7} />
+            <span>분할 보기</span>
           </button>
         </div>
 
         <div className="top-actions">
-          <button className="btn-primary-copy" onClick={handleCopyTistoryHtml}>
-            📋 티스토리용 서식 복사 (Cmd+V)
+          <button className="btn-ghost" onClick={handleCopyTistoryHtml}>
+            <Copy size={13} strokeWidth={1.7} />
+            <span>본문 빠른 복사</span>
+          </button>
+          <button className="btn-primary-copy" onClick={handleOpenCopyWindow}>
+            <ExternalLink size={13} strokeWidth={1.8} />
+            <span>복붙 전용 창 열기</span>
           </button>
         </div>
       </header>
 
-      {/* Main Body: Left Icon Menu Bar + Collapsible Left Drawer + Main Editor */}
       <div className="workspace-flex">
-        {/* LEFT ICON ACTIVITY MENU BAR */}
+        {/* LEFT ACTIVITY MENU BAR (Monochrome SVG Icons) */}
         <nav className="left-activity-bar" aria-label="좌측 기능 메뉴바">
           <button
             className={activeMenu === "posts" ? "activity-btn active" : "activity-btn"}
             onClick={() => toggleMenuTab("posts")}
-            title="내 블로그 글 목록"
+            title="글 목록"
           >
-            <span className="activity-icon">📄</span>
+            <FileText size={17} strokeWidth={1.6} />
             <span className="activity-label">글 목록</span>
           </button>
 
           <button
             className={activeMenu === "git" ? "activity-btn active" : "activity-btn"}
             onClick={() => toggleMenuTab("git")}
-            title="Git 버전 스냅샷 & 원격 저장소 연결"
+            title="Git 커밋 및 버전 히스토리"
           >
-            <span className="activity-icon">🌿</span>
+            <GitBranch size={17} strokeWidth={1.6} />
             <span className="activity-label">커밋·Git</span>
             {hasChanges && <span className="activity-dot dirty" />}
           </button>
@@ -591,28 +889,28 @@ export function App() {
           <button
             className={activeMenu === "tray" ? "activity-btn active" : "activity-btn"}
             onClick={() => toggleMenuTab("tray")}
-            title="가공 완료 사진 트레이 (티스토리 복사용)"
+            title="사진 보관함 및 트레이"
           >
-            <span className="activity-icon">🖼️</span>
-            <span className="activity-label">사진 트레이</span>
-            <span className="activity-count">{assets.length}</span>
+            <ImageIcon size={17} strokeWidth={1.6} />
+            <span className="activity-label">사진함</span>
+            {assets.length > 0 && <span className="activity-count">{assets.length}</span>}
           </button>
 
           <button
             className={activeMenu === "studio" ? "activity-btn active" : "activity-btn"}
             onClick={() => toggleMenuTab("studio")}
-            title="아이폰 사진 필터 · 폴라로이드 · 확장자 변환"
+            title="사진 필터 · 폴라로이드 · 확장자 변환"
           >
-            <span className="activity-icon">🎞️</span>
+            <Sliders size={17} strokeWidth={1.6} />
             <span className="activity-label">사진 편집</span>
           </button>
 
           <button
             className={activeMenu === "style" ? "activity-btn active" : "activity-btn"}
             onClick={() => toggleMenuTab("style")}
-            title="티스토리 글자 크기 · 줄간격 · 코드 테마 설정"
+            title="블로그 서식 및 타이포그래피 설정"
           >
-            <span className="activity-icon">🎨</span>
+            <Type size={17} strokeWidth={1.6} />
             <span className="activity-label">서식 설정</span>
           </button>
         </nav>
@@ -623,18 +921,18 @@ export function App() {
             <aside className="left-drawer" style={{ width: `${drawerWidth}px` }}>
               <div className="drawer-header">
                 <span className="drawer-title">
-                  {activeMenu === "posts" && "📄 내 블로그 글 목록"}
-                  {activeMenu === "git" && "🌿 Git 커밋 & 버전 관리"}
-                  {activeMenu === "tray" && `🖼️ 사진 트레이 (${assets.length})`}
-                  {activeMenu === "studio" && "🎞️ 사진 필터 · 변환 스튜디오"}
-                  {activeMenu === "style" && "🎨 티스토리 서식 설정"}
+                  {activeMenu === "posts" && "문서 목록"}
+                  {activeMenu === "git" && "버전 관리 (Git)"}
+                  {activeMenu === "tray" && `사진 보관함 (${assets.length})`}
+                  {activeMenu === "studio" && "사진 현상 · 변환"}
+                  {activeMenu === "style" && "서식 · 타이포그래피"}
                 </span>
                 <button
                   className="drawer-close-btn"
                   onClick={() => setActiveMenu(null)}
-                  title="패널 닫기"
+                  title="패널 접기"
                 >
-                  ✕
+                  <X size={14} strokeWidth={1.7} />
                 </button>
               </div>
 
@@ -642,24 +940,25 @@ export function App() {
               {activeMenu === "posts" && (
                 <div className="drawer-body">
                   <div className="section-header">
-                    <span>저장된 글 ({posts.length})</span>
+                    <span>전체 문서 ({posts.length})</span>
                     <button
                       className="btn-mini"
                       onClick={() => setShowNewPostInput((prev) => !prev)}
                     >
-                      + 새 글 작성
+                      <Plus size={12} strokeWidth={1.8} />
+                      <span>새 문서</span>
                     </button>
                   </div>
                   {showNewPostInput && (
                     <div className="new-post-box">
                       <input
                         type="text"
-                        placeholder="새 글 제목 입력..."
+                        placeholder="새 글 제목..."
                         value={newPostTitle}
                         onChange={(e) => setNewPostTitle(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleCreatePost()}
                       />
-                      <button onClick={handleCreatePost}>생성</button>
+                      <button onClick={handleCreatePost}>만들기</button>
                     </div>
                   )}
                   <div className="post-list">
@@ -683,9 +982,9 @@ export function App() {
               {activeMenu === "git" && (
                 <div className="drawer-body">
                   <div className="section-header">
-                    <span>작업 상태</span>
+                    <span>작업 트리 상태</span>
                     <span className={hasChanges ? "git-status-dirty" : "git-status-clean"}>
-                      {hasChanges ? "● 수정됨 (커밋 가능)" : "✓ 변경사항 없음"}
+                      {hasChanges ? "수정됨" : "변경 없음"}
                     </span>
                   </div>
 
@@ -694,9 +993,7 @@ export function App() {
                       type="text"
                       disabled={!hasChanges}
                       placeholder={
-                        hasChanges
-                          ? "커밋 메모 입력 (예: 사진 추가 및 초안 작성)"
-                          : "수정된 내용이 없습니다"
+                        hasChanges ? "스냅샷 커밋 메시지 입력..." : "변경된 사항이 없습니다"
                       }
                       value={commitMessage}
                       onChange={(e) => setCommitMessage(e.target.value)}
@@ -707,36 +1004,35 @@ export function App() {
                       disabled={!hasChanges}
                       onClick={handleCreateSnapshot}
                     >
-                      {hasChanges
-                        ? "📌 변경사항 커밋 (스냅샷 저장)"
-                        : "✓ 변경사항 없음 (최신 상태)"}
+                      <GitCommit size={13} strokeWidth={1.8} />
+                      <span>{hasChanges ? "변경사항 스냅샷 저장" : "최신 스냅샷 상태"}</span>
                     </button>
                   </div>
 
-                  {/* Git Remote Link & Sync Box */}
                   <div className="git-remote-card">
                     <div className="git-remote-top">
                       <span className="git-remote-label">
-                        🔗 원격 저장소 ({gitRemote.branch})
+                        <Link2 size={12} strokeWidth={1.7} />
+                        <span>원격 저장소 ({gitRemote.branch})</span>
                       </span>
                       <button
                         className="btn-mini"
                         onClick={() => setShowRemoteInput((prev) => !prev)}
                       >
-                        {gitRemote.remote_url ? "주소 변경" : "깃 링크 연결"}
+                        {gitRemote.remote_url ? "변경" : "연결"}
                       </button>
                     </div>
                     <div className="git-remote-url" title={gitRemote.remote_url ?? ""}>
                       {gitRemote.remote_url
                         ? gitRemote.remote_url
-                        : "연결된 원격 저장소 없음 (로컬 전용)"}
+                        : "연결된 원격 저장소 없음"}
                     </div>
 
                     {showRemoteInput && (
                       <div className="git-remote-form">
                         <input
                           type="text"
-                          placeholder="https://github.com/아이디/저장소.git"
+                          placeholder="https://github.com/user/repo.git"
                           value={remoteUrlInput}
                           onChange={(e) => setRemoteUrlInput(e.target.value)}
                         />
@@ -747,7 +1043,7 @@ export function App() {
                           onChange={(e) => setRemoteTokenInput(e.target.value)}
                         />
                         <button className="btn-save-remote" onClick={handleSaveGitRemote}>
-                          원격 주소 저장
+                          저장
                         </button>
                       </div>
                     )}
@@ -755,17 +1051,19 @@ export function App() {
                     {gitRemote.remote_url && (
                       <div className="git-sync-btns">
                         <button disabled={isBusy} onClick={handlePushRemote}>
-                          ⬆️ Push (백업)
+                          <ArrowUpRight size={12} strokeWidth={1.8} />
+                          <span>Push</span>
                         </button>
                         <button disabled={isBusy} onClick={handlePullRemote}>
-                          ⬇️ Pull (가져오기)
+                          <ArrowDownLeft size={12} strokeWidth={1.8} />
+                          <span>Pull</span>
                         </button>
                       </div>
                     )}
                   </div>
 
                   <div className="section-header" style={{ marginTop: "6px" }}>
-                    <span>커밋 히스토리 ({snapshots.length})</span>
+                    <span>히스토리 ({snapshots.length})</span>
                   </div>
 
                   <div className="snapshot-list">
@@ -776,26 +1074,26 @@ export function App() {
                           <div className="snapshot-top">
                             <span className="snapshot-hash">{snap.short_id}</span>
                             {isCurrentHead && (
-                              <span className="current-head-badge">현재 버전</span>
+                              <span className="current-head-badge">HEAD</span>
                             )}
                             <span className="snapshot-time">
                               {new Date(snap.timestamp_iso).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
-                                second: "2-digit",
                               })}
                             </span>
                           </div>
                           <div className="snapshot-msg">{snap.message}</div>
                           <div className="snapshot-actions">
                             <button onClick={() => handleViewDiff(snap)}>
-                              🔍 변경점 비교
+                              변경점 보기
                             </button>
                             <button
                               disabled={isCurrentHead}
                               onClick={() => handleRollbackSnapshot(snap)}
                             >
-                              {isCurrentHead ? "현재 적용됨" : "⏪ 이 버전으로 복원"}
+                              <RotateCcw size={11} strokeWidth={1.7} />
+                              <span>{isCurrentHead ? "현재 상태" : "복원"}</span>
                             </button>
                           </div>
                         </div>
@@ -817,21 +1115,11 @@ export function App() {
                     }}
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    <div className="dropzone-title">
-                      📸 아이폰 사진(HEIC/JPG/PNG) 추가·드래그
-                    </div>
+                    <Upload size={16} strokeWidth={1.6} />
+                    <div className="dropzone-title">사진 불러오기 (HEIC · JPG · PNG)</div>
                     <div className="dropzone-sub">
-                      GPS 자동 삭제 · EXIF 추출 · 필터 · 확장자 변환
+                      클릭하거나 파일을 드래그하세요 (GPS 자동 제거)
                     </div>
-                  </div>
-
-                  <div className="tray-guide">
-                    <strong>티스토리 사진 넣기:</strong>
-                    <p>
-                      1) 상단 <b>[티스토리용 서식 복사]</b> 후 티스토리에 <code>Cmd+V</code>
-                      <br />
-                      2) 아래 카드에서 <b>[이미지 복사]</b> 클릭 후 사진 자리에 <code>Cmd+V</code>!
-                    </p>
                   </div>
 
                   <div className="tray-list">
@@ -852,7 +1140,10 @@ export function App() {
                             {asset.recipe.output_format.toUpperCase()} · {asset.width}×{asset.height}
                           </span>
                           {asset.gps_removed_verified && (
-                            <span className="privacy-pill">🛡️ GPS 삭제됨</span>
+                            <span className="privacy-pill" title="GPS 메타데이터 제거됨">
+                              <ShieldCheck size={11} strokeWidth={1.8} />
+                              <span>GPS 제거</span>
+                            </span>
                           )}
                         </div>
 
@@ -861,13 +1152,12 @@ export function App() {
                         </div>
 
                         {asset.exif_summary && (
-                          <div className="tray-exif">📷 {asset.exif_summary}</div>
+                          <div className="tray-exif">{asset.exif_summary}</div>
                         )}
 
                         <div className="tray-size-info">
                           {formatBytes(asset.original_size_bytes)} →{" "}
-                          <strong>{formatBytes(asset.processed_size_bytes)}</strong> (
-                          {asset.recipe.filter} / {asset.recipe.frame})
+                          <strong>{formatBytes(asset.processed_size_bytes)}</strong>
                         </div>
 
                         <div className="tray-card-actions">
@@ -878,7 +1168,8 @@ export function App() {
                               handleCopyTrayImage(asset);
                             }}
                           >
-                            🖼️ 이미지 복사 (티스토리에 Cmd+V)
+                            <Copy size={12} strokeWidth={1.8} />
+                            <span>클립보드에 이미지 복사</span>
                           </button>
                           <div className="tray-sub-actions">
                             <button
@@ -887,7 +1178,7 @@ export function App() {
                                 handleSelectAsset(asset, true);
                               }}
                             >
-                              🎞️ 필터/확장자 편집
+                              필터·포맷 편집
                             </button>
                             <button
                               onClick={(e) => {
@@ -895,7 +1186,7 @@ export function App() {
                                 handleInsertAssetIntoPost(asset);
                               }}
                             >
-                              ➕ 본문에 넣기
+                              본문에 삽입
                             </button>
                           </div>
                         </div>
@@ -909,7 +1200,7 @@ export function App() {
               {activeMenu === "studio" && (
                 <div className="drawer-body">
                   <div
-                    className="photo-dropzone"
+                    className="photo-dropzone compact"
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -917,9 +1208,8 @@ export function App() {
                     }}
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    <div className="dropzone-title">
-                      📸 새 아이폰 사진(HEIC/JPG/PNG) 불러오기
-                    </div>
+                    <Upload size={14} strokeWidth={1.6} />
+                    <span className="dropzone-title">새 사진 파일 추가 (HEIC/JPG/PNG)</span>
                   </div>
 
                   {selectedAsset && editingRecipe ? (
@@ -932,19 +1222,20 @@ export function App() {
                         <div className="studio-meta-bar">
                           <span>{selectedAsset.original_filename}</span>
                           {selectedAsset.gps_removed_verified && (
-                            <span className="privacy-pill">🛡️ GPS 삭제됨</span>
+                            <span className="privacy-pill">
+                              <ShieldCheck size={11} strokeWidth={1.8} />
+                              <span>GPS 제거됨</span>
+                            </span>
                           )}
                         </div>
                         {selectedAsset.exif_summary && (
-                          <div className="studio-exif-line">
-                            📷 {selectedAsset.exif_summary}
-                          </div>
+                          <div className="studio-exif-line">{selectedAsset.exif_summary}</div>
                         )}
                       </div>
 
                       <div className="studio-controls">
                         <div className="control-group">
-                          <label>1. 감성 필터 프리셋</label>
+                          <label>컬러 프로파일 (Filter)</label>
                           <div className="filter-grid">
                             {FILTER_LABELS.map((f) => (
                               <button
@@ -966,7 +1257,7 @@ export function App() {
                         </div>
 
                         <div className="control-group">
-                          <label>2. 밝기 / 대비 / 채도 보정</label>
+                          <label>노출 · 대비 · 채도</label>
                           <div className="slider-row">
                             <span>밝기 ({editingRecipe.brightness})</span>
                             <input
@@ -1015,7 +1306,7 @@ export function App() {
                         </div>
 
                         <div className="control-group">
-                          <label>3. 테두리 & 폴라로이드 프레임</label>
+                          <label>프레임 스타일</label>
                           <select
                             value={editingRecipe.frame}
                             onChange={(e) =>
@@ -1034,7 +1325,7 @@ export function App() {
                         </div>
 
                         <div className="control-group">
-                          <label>4. 워터마크 / 하단 각인 (영문/숫자)</label>
+                          <label>워터마크 / 하단 스탬프 (영문·숫자)</label>
                           <input
                             type="text"
                             placeholder="예: SHOT ON IPHONE 15 PRO"
@@ -1049,7 +1340,7 @@ export function App() {
                         </div>
 
                         <div className="control-group">
-                          <label>5. 이미지 확장자 변환 & 크기</label>
+                          <label>포맷(확장자) 변환 및 해상도</label>
                           <div className="format-row">
                             <select
                               value={editingRecipe.output_format}
@@ -1060,9 +1351,9 @@ export function App() {
                                 })
                               }
                             >
-                              <option value="webp">WebP (고압축 권장)</option>
-                              <option value="jpeg">JPEG (.jpg 호환)</option>
-                              <option value="png">PNG (.png 무손실)</option>
+                              <option value="webp">WebP (권장)</option>
+                              <option value="jpeg">JPEG (.jpg)</option>
+                              <option value="png">PNG (.png)</option>
                             </select>
                             <select
                               value={editingRecipe.max_width}
@@ -1082,10 +1373,10 @@ export function App() {
                         </div>
 
                         <div className="control-group">
-                          <label>6. 사진 캡션 설명</label>
+                          <label>사진 캡션</label>
                           <input
                             type="text"
-                            placeholder="사진 하단 설명 입력..."
+                            placeholder="사진 하단 설명..."
                             value={editingCaption}
                             onChange={(e) => setEditingCaption(e.target.value)}
                           />
@@ -1096,14 +1387,12 @@ export function App() {
                           disabled={isBusy}
                           onClick={handleApplyImageRecipe}
                         >
-                          {isBusy
-                            ? "렌더링 중..."
-                            : "✨ 필터·프레임·확장자 변환 적용"}
+                          {isBusy ? "렌더링 중..." : "변경사항 이미지에 적용"}
                         </button>
                       </div>
                     </>
                   ) : (
-                    <div className="empty-studio">사진을 먼저 선택하거나 업로드해 주세요.</div>
+                    <div className="empty-studio">편집할 사진을 선택해 주세요.</div>
                   )}
                 </div>
               )}
@@ -1113,7 +1402,7 @@ export function App() {
                 <div className="drawer-body">
                   <div className="studio-controls">
                     <div className="control-group">
-                      <label>대제목 (H1) 글자 크기 (px)</label>
+                      <label>대제목 (H1) 크기 (px)</label>
                       <input
                         type="number"
                         value={preset.h1_size_px}
@@ -1128,7 +1417,7 @@ export function App() {
                       />
                     </div>
                     <div className="control-group">
-                      <label>중제목 (H2) 글자 크기 (px)</label>
+                      <label>중제목 (H2) 크기 (px)</label>
                       <input
                         type="number"
                         value={preset.h2_size_px}
@@ -1143,7 +1432,7 @@ export function App() {
                       />
                     </div>
                     <div className="control-group">
-                      <label>소제목 (H3) 글자 크기 (px)</label>
+                      <label>소제목 (H3) 크기 (px)</label>
                       <input
                         type="number"
                         value={preset.h3_size_px}
@@ -1158,7 +1447,7 @@ export function App() {
                       />
                     </div>
                     <div className="control-group">
-                      <label>본문 기본 글자 크기 (px)</label>
+                      <label>본문 기본 크기 (px)</label>
                       <input
                         type="number"
                         value={preset.body_font_size_px}
@@ -1189,7 +1478,7 @@ export function App() {
                       />
                     </div>
                     <div className="control-group">
-                      <label>강조 포인트 색상</label>
+                      <label>포인트 색상</label>
                       <input
                         type="color"
                         value={preset.accent_color}
@@ -1199,15 +1488,15 @@ export function App() {
                       />
                     </div>
                     <div className="control-group">
-                      <label>코드 블록 구문 강조 테마</label>
+                      <label>코드 블록 테마</label>
                       <select
                         value={preset.code_theme}
                         onChange={(e) =>
                           handlePresetChange({ ...preset, code_theme: e.target.value })
                         }
                       >
-                        <option value="base16-ocean.dark">Ocean Dark (다크)</option>
-                        <option value="InspiredGitHub">GitHub Light (라이트)</option>
+                        <option value="base16-ocean.dark">Ocean Dark</option>
+                        <option value="InspiredGitHub">GitHub Light</option>
                         <option value="Solarized (dark)">Solarized Dark</option>
                         <option value="Solarized (light)">Solarized Light</option>
                       </select>
@@ -1219,12 +1508,12 @@ export function App() {
             <div
               className="resizer-vertical"
               onMouseDown={startResizeDrawer}
-              title="드래그하여 좌측 메뉴 패널 너비 조절"
+              title="드래그하여 패널 너비 조절"
             />
           </>
         )}
 
-        {/* CENTER PANE: Full-Width Editor Area */}
+        {/* CENTER PANE: Editor Area */}
         <main className="center-editor-area" ref={centerAreaRef}>
           {viewMode === "visual" && (
             <div className="single-pane">
@@ -1238,9 +1527,9 @@ export function App() {
           {viewMode === "code" && (
             <div className="single-pane">
               <div className="pane-toolbar">
-                <span className="pane-title">💻 마크다운 직접 편집</span>
+                <span className="pane-title">Markdown Source</span>
                 <span className="pane-hint">
-                  작성한 마크다운은 일반 편집 모드 및 티스토리 서식과 실시간 동기화됩니다.
+                  일반 편집 모드 및 복붙 창과 실시간으로 동기화됩니다.
                 </span>
               </div>
               <textarea
@@ -1266,65 +1555,27 @@ export function App() {
               <div
                 className="resizer-vertical"
                 onMouseDown={startResizeSplit}
-                title="드래그하여 분할 화면 비율 조절"
+                title="드래그하여 분할 비율 조절"
               />
 
               <div className="split-pane" style={{ flex: 1 }}>
                 <div className="pane-toolbar">
-                  <span className="pane-title">💻 마크다운 원문 & 실시간 미리보기</span>
+                  <span className="pane-title">Markdown & Live Preview</span>
                 </div>
                 <div className="split-right-vertical">
                   <textarea
                     className="markdown-textarea compact"
                     value={markdownText}
                     onChange={(e) => syncFromMarkdown(e.target.value)}
-                    placeholder="마크다운을 직접 입력하면 좌측 일반 에디터와 실시간 동기화됩니다..."
                   />
                   <div className="tistory-live-preview-wrapper">
-                    <div className="preview-sticky-label">
-                      티스토리 붙여넣기 미리보기
-                    </div>
+                    <div className="preview-sticky-label">Preview</div>
                     <div
                       className="tistory-preview-canvas"
                       dangerouslySetInnerHTML={{ __html: previewHtml }}
                     />
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {viewMode === "tistory" && (
-            <div className="split-flex-container">
-              <div
-                className="split-pane"
-                style={{ width: `${splitPercent}%`, flex: "none" }}
-              >
-                <div className="pane-toolbar">
-                  <span className="pane-title">👀 티스토리 붙여넣기 실제 결과 미리보기</span>
-                </div>
-                <div className="visual-editor-scroll">
-                  <div
-                    className="tistory-preview-canvas"
-                    dangerouslySetInnerHTML={{ __html: previewHtml }}
-                  />
-                </div>
-              </div>
-
-              <div
-                className="resizer-vertical"
-                onMouseDown={startResizeSplit}
-                title="드래그하여 분할 화면 비율 조절"
-              />
-
-              <div className="split-pane" style={{ flex: 1 }}>
-                <div className="pane-toolbar">
-                  <span className="pane-title">🔍 티스토리용 인라인 CSS HTML 코드</span>
-                  <button className="btn-mini" onClick={handleCopyTistoryHtml}>
-                    HTML 복사
-                  </button>
-                </div>
-                <textarea className="markdown-textarea full" readOnly value={copyHtml} />
               </div>
             </div>
           )}
@@ -1337,13 +1588,11 @@ export function App() {
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <strong>
-                  🔍 스냅샷 [{diffModal.snapshot.short_id}] 대비 변경점 (Git Diff)
-                </strong>
+                <strong>스냅샷 [{diffModal.snapshot.short_id}] 변경점 비교</strong>
                 <div className="modal-sub">{diffModal.snapshot.message}</div>
               </div>
               <button className="btn-close" onClick={() => setDiffModal(null)}>
-                ✕
+                <X size={16} />
               </button>
             </div>
             <pre className="diff-pre">{diffModal.diff}</pre>
@@ -1352,7 +1601,7 @@ export function App() {
                 className="btn-rollback"
                 onClick={() => handleRollbackSnapshot(diffModal.snapshot)}
               >
-                ⏪ 이 스냅샷 버전으로 복원하기
+                이 스냅샷 버전으로 복원
               </button>
               <button className="btn-secondary" onClick={() => setDiffModal(null)}>
                 닫기
@@ -1362,7 +1611,6 @@ export function App() {
         </div>
       )}
 
-      {/* Toast Notification */}
       {toast && <div className="toast-banner">{toast}</div>}
     </div>
   );
@@ -1443,7 +1691,6 @@ export function App() {
     return (
       <div className="pane-toolbar rich-toolbar">
         <div className="toolbar-group">
-          <label className="toolbar-label">스타일</label>
           <select
             className="toolbar-select"
             value={
@@ -1460,11 +1707,11 @@ export function App() {
             onChange={(e) => handleChangeBlockStyle(e.target.value)}
           >
             <option value="p">본문 단락</option>
-            <option value="h1">대제목 1 ({preset.h1_size_px}px)</option>
-            <option value="h2">중제목 2 ({preset.h2_size_px}px)</option>
-            <option value="h3">소제목 3 ({preset.h3_size_px}px)</option>
-            <option value="quote">인용구 블록</option>
-            <option value="list">글머리 목록</option>
+            <option value="h1">제목 1 ({preset.h1_size_px}px)</option>
+            <option value="h2">제목 2 ({preset.h2_size_px}px)</option>
+            <option value="h3">제목 3 ({preset.h3_size_px}px)</option>
+            <option value="quote">인용구</option>
+            <option value="list">목록</option>
             <option value="code">코드 블록</option>
           </select>
         </div>
@@ -1472,7 +1719,6 @@ export function App() {
         <div className="toolbar-divider" />
 
         <div className="toolbar-group">
-          <label className="toolbar-label">글자 크기</label>
           <button
             className="size-step-btn"
             onClick={() => handleFontSizeChange(Math.max(12, currentFontSize - 2))}
@@ -1487,7 +1733,7 @@ export function App() {
           >
             {[13, 14, 15, 16, 18, 20, 22, 24, 28, 32].map((sz) => (
               <option key={sz} value={sz}>
-                {sz}px {sz === preset.body_font_size_px ? "(기본)" : ""}
+                {sz}px
               </option>
             ))}
           </select>
@@ -1504,7 +1750,8 @@ export function App() {
 
         <div className="toolbar-group add-block-bar">
           <button onClick={() => fileInputRef.current?.click()}>
-            📸 사진 추가
+            <Plus size={12} strokeWidth={1.8} />
+            <span>사진 추가</span>
           </button>
           <button
             onClick={() =>
@@ -1551,7 +1798,7 @@ export function App() {
                   }}
                   title="위로 이동"
                 >
-                  ↑
+                  <ArrowUp size={12} />
                 </button>
                 <button
                   onClick={(e) => {
@@ -1560,7 +1807,7 @@ export function App() {
                   }}
                   title="아래로 이동"
                 >
-                  ↓
+                  <ArrowDown size={12} />
                 </button>
                 <button
                   className="btn-del"
@@ -1570,7 +1817,7 @@ export function App() {
                   }}
                   title="삭제"
                 >
-                  ✕
+                  <Trash2 size={12} />
                 </button>
               </div>
 
@@ -1608,7 +1855,7 @@ export function App() {
                       fontSize: `${block.font_size_px ?? preset.body_font_size_px}px`,
                       lineHeight: preset.line_height,
                     }}
-                    placeholder="내용을 타이핑하세요... (상단 툴바에서 글자 크기를 바꿀 수 있습니다)"
+                    placeholder="내용을 입력하세요..."
                     rows={Math.max(1, block.text.split("\n").length)}
                     value={block.text}
                     onFocus={() => setFocusedBlockIdx(idx)}
@@ -1643,7 +1890,7 @@ export function App() {
                       lineHeight: preset.line_height,
                       borderLeftColor: preset.accent_color,
                     }}
-                    placeholder="강조할 인용구를 입력하세요..."
+                    placeholder="인용구를 입력하세요..."
                     rows={Math.max(1, block.text.split("\n").length)}
                     value={block.text}
                     onFocus={() => setFocusedBlockIdx(idx)}
@@ -1720,11 +1967,11 @@ export function App() {
                           )}
                           <div className="visual-img-controls">
                             <div className="visual-img-row">
-                              <label>📷 촬영 정보:</label>
+                              <label>촬영 정보</label>
                               <input
                                 type="text"
                                 value={block.exif_caption ?? ""}
-                                placeholder="예: iPhone 15 Pro · 24mm · f/1.78"
+                                placeholder="iPhone 15 Pro · 24mm · f/1.78"
                                 onChange={(e) =>
                                   updateBlockAt(idx, {
                                     ...block,
@@ -1734,11 +1981,11 @@ export function App() {
                               />
                             </div>
                             <div className="visual-img-row">
-                              <label>💬 사진 설명:</label>
+                              <label>캡션 설명</label>
                               <input
                                 type="text"
                                 value={block.custom_caption ?? ""}
-                                placeholder="사진 하단 설명 캡션..."
+                                placeholder="사진 하단 캡션..."
                                 onChange={(e) =>
                                   updateBlockAt(idx, {
                                     ...block,
@@ -1753,7 +2000,8 @@ export function App() {
                                 className="btn-edit-in-studio"
                                 onClick={() => handleSelectAsset(matched, true)}
                               >
-                                🎞️ 좌측 사진 편집 메뉴에서 필터·폴라로이드·확장자 변경하기
+                                <Sliders size={12} strokeWidth={1.7} />
+                                <span>사진 편집 패널에서 필터 · 확장자 변경</span>
                               </button>
                             )}
                           </div>
@@ -1773,7 +2021,7 @@ export function App() {
           className="doc-bottom-click-zone"
           onClick={() => addBlock({ type: "paragraph", text: "" })}
         >
-          + 여기를 클릭해 이어서 글쓰기
+          + 새 문단 추가
         </div>
       </div>
     );
