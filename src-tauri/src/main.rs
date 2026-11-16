@@ -640,6 +640,9 @@ fn resolve_workspace_dir() -> PathBuf {
     if let Ok(custom) = std::env::var("WRITER_WORKSPACE_DIR") {
         return PathBuf::from(custom);
     }
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home).join("Documents").join("WriterWorkspace");
+    }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     if cwd.ends_with("src-tauri") {
         cwd.parent().unwrap_or(&cwd).join("blog_workspace")
