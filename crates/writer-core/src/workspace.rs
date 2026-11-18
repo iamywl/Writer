@@ -527,12 +527,15 @@ fn main() {{
         Ok(cites)
     }
 
-    /// Parses a BibTeX snippet (e.g., `@inproceedings{hewitt1973, author={...}, title={...}, year={1973}}`)
+    /// Parses a BibTeX snippet OR plain-text citation lines (e.g. ACM/APA style)
     /// and upserts all extracted entries into `.writer/references.json`.
     pub fn import_bibtex_cites(&self, bibtex: &str) -> Result<Vec<CiteEntry>> {
-        let parsed = parse_bibtex_entries(bibtex);
+        let mut parsed = parse_bibtex_entries(bibtex);
         if parsed.is_empty() {
-            anyhow::bail!("유효한 BibTeX 항목(@article, @inproceedings 등)을 찾지 못했습니다.");
+            parsed = parse_plain_text_citations(bibtex);
+        }
+        if parsed.is_empty() {
+            anyhow::bail!("유효한 BibTeX 또는 일반 참고문헌 텍스트를 찾지 못했습니다.");
         }
         let mut cites = self.list_cites()?;
         for entry in parsed {
@@ -631,6 +634,96 @@ fn parse_bibtex_entries(input: &str) -> Vec<CiteEntry> {
             }
         };
         let url = extract_bib_field(body, "url");
+
+        entries.push(CiteEntry {
+            key,
+            authors,
+            title,
+            year,
+            venue,
+            url,
+        });
+    }
+    entries
+}
+
+fn parse_plain_text_citations(input: &str) -> Vec<CiteEntry> {
+    let mut entries = Vec::new();
+    for raw_line in input.lines() {
+        let mut line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Strip leading "[1] " or "1. " if present
+        if line.starts_with('[') {
+            if let Some(close) = line.find(']') {
+                line = line[close + 1..].trim();
+            }
+        }
+
+        // Extract URL if present
+        let mut url = String::new();
+        if let Some(http_idx) = line.find("http") {
+            let url_part = line[http_idx..].trim();
+            url = url_part
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_end_matches('.')
+                .to_string();
+        }
+
+        // Find a 4-digit year (1900..=2099)
+        let mut year = String::new();
+        let mut year_pos: Option<(usize, usize)> = None;
+        let bytes = line.as_bytes();
+        for i in 0..bytes.len().saturating_sub(3) {
+            if (bytes[i] == b'1' && bytes[i + 1] == b'9')
+                || (bytes[i] == b'2' && bytes[i + 1] == b'0')
+            {
+                if bytes[i + 2].is_ascii_digit() && bytes[i + 3].is_ascii_digit() {
+                    let prev_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
+                    let next_ok = i + 4 == bytes.len() || !bytes[i + 4].is_ascii_alphanumeric();
+                    if prev_ok && next_ok {
+                        year = line[i..i + 4].to_string();
+                        year_pos = Some((i, i + 4));
+                        break;
+                    }
+                }
+            }
+        }
+
+        let (authors, title, venue) = if let Some((ys, ye)) = year_pos {
+            let auth = line[..ys]
+                .trim()
+                .trim_end_matches(['.', ',', '(', ' '])
+                .to_string();
+            let rest = line[ye..]
+                .trim()
+                .trim_start_matches([')', '.', ',', ' ']);
+            if let Some(dot_idx) = rest.find(". ") {
+                let t = rest[..dot_idx].trim().to_string();
+                let v = rest[dot_idx + 2..].trim().trim_end_matches('.').to_string();
+                (auth, t, v)
+            } else {
+                (auth, rest.trim_end_matches('.').to_string(), String::new())
+            }
+        } else {
+            (String::new(), line.to_string(), String::new())
+        };
+
+        if title.is_empty() {
+            continue;
+        }
+
+        let first_word = authors
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .last()
+            .or_else(|| title.split_whitespace().next())
+            .unwrap_or("ref")
+            .to_lowercase();
+        let key = format!("{}{}", first_word, year);
 
         entries.push(CiteEntry {
             key,

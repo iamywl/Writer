@@ -346,6 +346,11 @@ mod tests {
         assert!(html.contains("References</h3>"));
         assert!(html.contains("Carl Hewitt and Peter Bishop and Richard Steiger"));
         assert!(html.contains("A Universal Modular ACTOR Formalism for Artificial Intelligence"));
+
+        // Also verify plain-text ACM/APA citation parsing
+        let plain = "Carl Hewitt, Peter Bishop, and Richard Steiger. 1973. A universal modular ACTOR formalism for artificial intelligence. In Proceedings of the 3rd international joint conference on Artificial intelligence (IJCAI'73).";
+        let plain_cites = ws.import_bibtex_cites(plain).unwrap();
+        assert!(plain_cites.iter().any(|c| c.year == "1973" && c.title.contains("ACTOR formalism")));
     }
 
     // =========================================================================
