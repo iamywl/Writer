@@ -419,6 +419,8 @@ function MainEditorWindow() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const centerAreaRef = useRef<HTMLElement | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+  const saveSeqRef = useRef<number>(0);
 
   const showToastMessage = (msg: string) => {
     setToast(msg);
@@ -543,40 +545,58 @@ function MainEditorWindow() {
     }
   };
 
-  const syncFromMarkdown = async (newMd: string, customPreset = preset) => {
+  const syncFromMarkdown = (newMd: string, customPreset = preset) => {
     setMarkdownText(newMd);
     if (!activePost) return;
-    try {
-      const res = await api.saveMarkdown(activePost.slug, newMd, customPreset);
-      setActivePost(res.post);
-      setPosts(res.posts);
-      setVisualBlocks(res.post.blocks);
-      setPreviewHtml(res.preview_html);
-      setHasChanges(res.has_changes);
-    } catch (err: any) {
-      showToastMessage(`동기화 오류: ${err.message}`);
+    const slug = activePost.slug;
+    const seq = ++saveSeqRef.current;
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
     }
+    saveTimerRef.current = window.setTimeout(async () => {
+      try {
+        const res = await api.saveMarkdown(slug, newMd, customPreset);
+        if (seq !== saveSeqRef.current) return;
+        setActivePost(res.post);
+        setPosts(res.posts);
+        setVisualBlocks(res.post.blocks);
+        setPreviewHtml(res.preview_html);
+        setHasChanges(res.has_changes);
+      } catch (err: any) {
+        showToastMessage(`동기화 오류: ${err.message}`);
+      }
+    }, 250);
   };
 
-  const syncFromVisualBlocks = async (newBlocks: VisualBlock[], customPreset = preset) => {
+  const syncFromVisualBlocks = (newBlocks: VisualBlock[], customPreset = preset) => {
     setVisualBlocks(newBlocks);
     if (!activePost) return;
-    try {
-      const res = await api.saveVisualBlocks(activePost.slug, newBlocks, customPreset);
-      setActivePost(res.post);
-      setPosts(res.posts);
-      setMarkdownText(res.post.markdown);
-      setPreviewHtml(res.preview_html);
-      setHasChanges(res.has_changes);
-    } catch (err: any) {
-      showToastMessage(`저장 오류: ${err.message}`);
+    const slug = activePost.slug;
+    const seq = ++saveSeqRef.current;
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
     }
+    saveTimerRef.current = window.setTimeout(async () => {
+      try {
+        const res = await api.saveVisualBlocks(slug, newBlocks, customPreset);
+        if (seq !== saveSeqRef.current) return;
+        setActivePost(res.post);
+        setPosts(res.posts);
+        setMarkdownText(res.post.markdown);
+        setPreviewHtml(res.preview_html);
+        setHasChanges(res.has_changes);
+      } catch (err: any) {
+        showToastMessage(`저장 오류: ${err.message}`);
+      }
+    }, 250);
   };
 
-  const handlePresetChange = async (updated: TistoryStylePreset) => {
+  const handlePresetChange = (updated: TistoryStylePreset) => {
     setPreset(updated);
     if (activePost) {
-      await syncFromMarkdown(markdownText, updated);
+      syncFromMarkdown(markdownText, updated);
     }
   };
 

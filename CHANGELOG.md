@@ -1,5 +1,18 @@
 # Release Notes / Patch Notes
 
+## v0.2.1 — Editor Typing Stability & Citation UX Polish (2026-11-18)
+
+### 1. 에디터 타이핑 커서 튐·글자 겹침 현상 해결 (안정화)
+* **250ms 디바운스(Debounce) 및 시퀀스 가드 적용**:
+  * 기존에 키 입력마다 즉시 비동기 저장을 요청하면서 이전 응답이 늦게 도착해 커서가 맨 뒤로 튀던 경쟁 상태(Race Condition)를 해결했습니다.
+  * 한글 IME 조합 및 빠른 연속 타이핑 중에도 커서 위치와 입력 내용이 절대 흔들리지 않도록 최신 시퀀스 번호(`saveSeqRef`) 기반으로 동기화합니다.
+
+### 2. 참고문헌(`Cite`) 일반 텍스트 파싱 & 번호 배지 UI 개선
+* **일반 텍스트 인용구 자동 파싱**: BibTeX(`@inproceedings{...}`)뿐만 아니라 ACM/APA/Google Scholar 스타일의 일반 인용 문장(`Carl Hewitt, ... 1973. ...`)을 그대로 붙여넣어도 저자·연도·제목·출처·인용 키를 자동으로 추출합니다.
+* **번호 배지(`[1]`, `[2]`) 표시**: 좌측 `참고문헌 · Cite` 카드와 본문 문단 하단에 실제 변환될 번호 배지와 논문 제목이 함께 표시됩니다.
+
+---
+
 ## v0.2.0 — Overleaf-Style Cite Management & Clipboard Image Paste (2026-11-18)
 
 ### 1. Overleaf 스타일 참고문헌(`Cite`) 및 BibTeX 관리
