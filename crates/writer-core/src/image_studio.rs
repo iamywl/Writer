@@ -36,7 +36,7 @@ impl OutputImageFormat {
     }
 }
 
-/// Color grading presets tailored for blog photography.
+/// Color grading presets tailored for blog photography (including iCam FilmLab stocks).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FilterPreset {
@@ -46,6 +46,10 @@ pub enum FilterPreset {
     Monochrome,
     VividPop,
     CoolCinema,
+    FujiPro400h,
+    KodakEktar100,
+    IlfordHp5,
+    AgfaVista,
 }
 
 /// Decorative border/frame styles for blog images.
@@ -506,10 +510,38 @@ fn apply_color_pipeline(rgba: &mut RgbaImage, recipe: &ImageRecipe) {
                 b = 1.08 * (b - 128.0) + 128.0;
             }
             FilterPreset::CoolCinema => {
-                // Teal & cool shadows
+                // Teal & cool shadows (CineStill 800T style)
                 r = r * 0.94;
                 g = g * 1.02 + 2.0;
                 b = b * 1.09 + 8.0;
+            }
+            FilterPreset::FujiPro400h => {
+                // Soft pastel highlights with signature Fuji cyan-green shadows
+                r = r * 0.96 + 6.0;
+                g = g * 1.04 + 6.0;
+                b = b * 1.03 + 8.0;
+            }
+            FilterPreset::KodakEktar100 => {
+                // Ultra-vivid landscape punch with rich reds & deep blues
+                let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                r = lum + (r - lum) * 1.28;
+                g = lum + (g - lum) * 1.18;
+                b = lum + (b - lum) * 1.25;
+                r = r * 1.05;
+            }
+            FilterPreset::IlfordHp5 => {
+                // Classic medium-contrast documentary B&W with lifted blacks
+                let bw = 0.299 * r + 0.587 * g + 0.114 * b;
+                let soft_bw = bw * 0.92 + 12.0;
+                r = soft_bw;
+                g = soft_bw;
+                b = soft_bw;
+            }
+            FilterPreset::AgfaVista => {
+                // Warm magenta-red retro film cast
+                r = r * 1.08 + 10.0;
+                g = g * 0.97 + 2.0;
+                b = b * 0.94 + 4.0;
             }
         }
 

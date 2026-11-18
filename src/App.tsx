@@ -44,11 +44,15 @@ type LeftMenuTab = "posts" | "git" | "tray" | "studio" | "style";
 
 const FILTER_LABELS: { value: FilterPreset; label: string; desc: string }[] = [
   { value: "original", label: "Original", desc: "원본" },
-  { value: "film_warm", label: "Film Warm", desc: "웜 필름" },
-  { value: "vintage_fade", label: "Vintage", desc: "매트 페이드" },
-  { value: "monochrome", label: "Mono", desc: "고대비 흑백" },
-  { value: "vivid_pop", label: "Vivid", desc: "선명한 채도" },
-  { value: "cool_cinema", label: "Cinema", desc: "시네마틱 쿨" },
+  { value: "film_warm", label: "Portra 400", desc: "웜 필름" },
+  { value: "vintage_fade", label: "Gold 200", desc: "매트 빈티지" },
+  { value: "fuji_pro400h", label: "Pro 400H", desc: "파스텔 시안" },
+  { value: "kodak_ektar100", label: "Ektar 100", desc: "선명한 풍경" },
+  { value: "cool_cinema", label: "CineStill", desc: "시네마틱 쿨" },
+  { value: "agfa_vista", label: "Vista 400", desc: "레트로 레드" },
+  { value: "vivid_pop", label: "Velvia 50", desc: "고채도" },
+  { value: "monochrome", label: "Tri-X 400", desc: "고대비 흑백" },
+  { value: "ilford_hp5", label: "Ilford HP5", desc: "부드러운 흑백" },
 ];
 
 const FRAME_LABELS: { value: FrameStyle; label: string }[] = [
@@ -1519,8 +1523,22 @@ function MainEditorWindow() {
           </>
         )}
 
-        {/* CENTER PANE: Editor Area */}
-        <main className="center-editor-area" ref={centerAreaRef}>
+        {/* CENTER PANE: Editor Area (supports dropping photos directly anywhere) */}
+        <main
+          className="center-editor-area"
+          ref={centerAreaRef}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("Files")) {
+              e.preventDefault();
+            }
+          }}
+          onDrop={(e) => {
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              e.preventDefault();
+              handleFileUpload(e.dataTransfer.files);
+            }
+          }}
+        >
           {viewMode === "visual" && (
             <div className="single-pane">
               {renderVisualToolbar()}

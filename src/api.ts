@@ -22,7 +22,11 @@ export type FilterPreset =
   | "vintage_fade"
   | "monochrome"
   | "vivid_pop"
-  | "cool_cinema";
+  | "cool_cinema"
+  | "fuji_pro400h"
+  | "kodak_ektar100"
+  | "ilford_hp5"
+  | "agfa_vista";
 
 export type FrameStyle = "none" | "minimal_white" | "polaroid" | "rounded_shadow";
 
