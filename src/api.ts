@@ -111,11 +111,21 @@ export interface TistoryStylePreset {
   code_theme: string;
 }
 
+export interface CiteEntry {
+  key: string;
+  authors: string;
+  title: string;
+  year: string;
+  venue: string;
+  url: string;
+}
+
 export interface WorkspaceBootstrap {
   workspace_path: string;
   posts: PostDocument[];
   active_post: PostDocument;
   assets: ImageAssetRecord[];
+  cites: CiteEntry[];
   snapshots: GitSnapshotInfo[];
   git_remote: GitRemoteStatus;
   default_preset: TistoryStylePreset;
@@ -244,4 +254,25 @@ export const api = {
     window.open(q, "writer-copy-window", "width=640,height=820");
     return { opened: true };
   },
+  upsertCite: (entry: CiteEntry, markdown: string, preset: TistoryStylePreset) =>
+    callBackend<{
+      cites: CiteEntry[];
+      preview_html: string;
+      copy_html: string;
+      has_changes: boolean;
+    }>("upsert_cite_cmd", { entry, markdown, preset }),
+  deleteCite: (key: string, markdown: string, preset: TistoryStylePreset) =>
+    callBackend<{
+      cites: CiteEntry[];
+      preview_html: string;
+      copy_html: string;
+      has_changes: boolean;
+    }>("delete_cite_cmd", { key, markdown, preset }),
+  importBibtex: (bibtex: string, markdown: string, preset: TistoryStylePreset) =>
+    callBackend<{
+      cites: CiteEntry[];
+      preview_html: string;
+      copy_html: string;
+      has_changes: boolean;
+    }>("import_bibtex_cmd", { bibtex, markdown, preset }),
 };

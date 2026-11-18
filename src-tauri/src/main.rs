@@ -7,8 +7,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
 use writer_core::{
-    copy_image_bytes_to_clipboard, copy_rich_html_to_clipboard, GitRemoteStatus, GitSnapshotInfo,
-    ImageAssetRecord, ImageRecipe, PostDocument, TistoryStylePreset, VisualBlock, WriterWorkspace,
+    copy_image_bytes_to_clipboard, copy_rich_html_to_clipboard, CiteEntry, GitRemoteStatus,
+    GitSnapshotInfo, ImageAssetRecord, ImageRecipe, PostDocument, TistoryStylePreset, VisualBlock,
+    WriterWorkspace,
 };
 
 #[derive(Clone)]
@@ -28,6 +29,7 @@ pub struct WorkspaceBootstrapResponse {
     pub posts: Vec<PostDocument>,
     pub active_post: PostDocument,
     pub assets: Vec<ImageAssetRecord>,
+    pub cites: Vec<CiteEntry>,
     pub snapshots: Vec<GitSnapshotInfo>,
     pub git_remote: GitRemoteStatus,
     pub default_preset: TistoryStylePreset,
@@ -52,6 +54,7 @@ pub fn handle_get_workspace_bootstrap(state: &AppState) -> Result<WorkspaceBoots
         .cloned()
         .ok_or_else(|| "No posts found in workspace".to_string())?;
     let assets = ws.list_assets().map_err(|e| e.to_string())?;
+    let cites = ws.list_cites().map_err(|e| e.to_string())?;
     let snapshots = ws.list_git_snapshots().map_err(|e| e.to_string())?;
     let git_remote = ws.get_git_remote_status().map_err(|e| e.to_string())?;
     let default_preset = TistoryStylePreset::default();
@@ -67,6 +70,7 @@ pub fn handle_get_workspace_bootstrap(state: &AppState) -> Result<WorkspaceBoots
         posts,
         active_post,
         assets,
+        cites,
         snapshots,
         git_remote,
         default_preset,
@@ -311,6 +315,7 @@ pub fn handle_rollback_git_snapshot(
         })
         .map_err(|e| e.to_string())?;
     let assets = ws.list_assets().map_err(|e| e.to_string())?;
+    let cites = ws.list_cites().map_err(|e| e.to_string())?;
     let snapshots = ws.list_git_snapshots().map_err(|e| e.to_string())?;
     let git_remote = ws.get_git_remote_status().map_err(|e| e.to_string())?;
     let preview_html = ws
@@ -325,6 +330,7 @@ pub fn handle_rollback_git_snapshot(
         posts,
         active_post,
         assets,
+        cites,
         snapshots,
         git_remote,
         default_preset: preset.clone(),
@@ -369,6 +375,7 @@ pub fn handle_pull_git_remote(
         })
         .map_err(|e| e.to_string())?;
     let assets = ws.list_assets().map_err(|e| e.to_string())?;
+    let cites = ws.list_cites().map_err(|e| e.to_string())?;
     let snapshots = ws.list_git_snapshots().map_err(|e| e.to_string())?;
     let git_remote = ws.get_git_remote_status().map_err(|e| e.to_string())?;
     let preview_html = ws
@@ -383,6 +390,7 @@ pub fn handle_pull_git_remote(
         posts,
         active_post,
         assets,
+        cites,
         snapshots,
         git_remote,
         default_preset: preset.clone(),
@@ -554,6 +562,78 @@ fn open_copy_window_cmd(
     .build()
     .map_err(|e| e.to_string())?;
     Ok(json!({ "opened": true }))
+}
+
+#[tauri::command]
+fn upsert_cite_cmd(
+    state: tauri::State<'_, Arc<AppState>>,
+    entry: CiteEntry,
+    markdown: String,
+    preset: TistoryStylePreset,
+) -> Result<Value, String> {
+    let ws = state.open_workspace().map_err(|e| e.to_string())?;
+    let cites = ws.upsert_cite(entry).map_err(|e| e.to_string())?;
+    let preview_html = ws
+        .compile_post_for_tistory(&markdown, &preset, true)
+        .map_err(|e| e.to_string())?;
+    let copy_html = ws
+        .compile_post_for_tistory(&markdown, &preset, false)
+        .map_err(|e| e.to_string())?;
+    let has_changes = ws.git().has_uncommitted_changes().unwrap_or(true);
+    Ok(json!({
+        "cites": cites,
+        "preview_html": preview_html,
+        "copy_html": copy_html,
+        "has_changes": has_changes,
+    }))
+}
+
+#[tauri::command]
+fn delete_cite_cmd(
+    state: tauri::State<'_, Arc<AppState>>,
+    key: String,
+    markdown: String,
+    preset: TistoryStylePreset,
+) -> Result<Value, String> {
+    let ws = state.open_workspace().map_err(|e| e.to_string())?;
+    let cites = ws.delete_cite(&key).map_err(|e| e.to_string())?;
+    let preview_html = ws
+        .compile_post_for_tistory(&markdown, &preset, true)
+        .map_err(|e| e.to_string())?;
+    let copy_html = ws
+        .compile_post_for_tistory(&markdown, &preset, false)
+        .map_err(|e| e.to_string())?;
+    let has_changes = ws.git().has_uncommitted_changes().unwrap_or(true);
+    Ok(json!({
+        "cites": cites,
+        "preview_html": preview_html,
+        "copy_html": copy_html,
+        "has_changes": has_changes,
+    }))
+}
+
+#[tauri::command]
+fn import_bibtex_cmd(
+    state: tauri::State<'_, Arc<AppState>>,
+    bibtex: String,
+    markdown: String,
+    preset: TistoryStylePreset,
+) -> Result<Value, String> {
+    let ws = state.open_workspace().map_err(|e| e.to_string())?;
+    let cites = ws.import_bibtex_cites(&bibtex).map_err(|e| e.to_string())?;
+    let preview_html = ws
+        .compile_post_for_tistory(&markdown, &preset, true)
+        .map_err(|e| e.to_string())?;
+    let copy_html = ws
+        .compile_post_for_tistory(&markdown, &preset, false)
+        .map_err(|e| e.to_string())?;
+    let has_changes = ws.git().has_uncommitted_changes().unwrap_or(true);
+    Ok(json!({
+        "cites": cites,
+        "preview_html": preview_html,
+        "copy_html": copy_html,
+        "has_changes": has_changes,
+    }))
 }
 
 // =========================================================================
@@ -765,6 +845,9 @@ fn main() {
             push_git_remote_cmd,
             pull_git_remote_cmd,
             open_copy_window_cmd,
+            upsert_cite_cmd,
+            delete_cite_cmd,
+            import_bibtex_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Writer Tauri application");

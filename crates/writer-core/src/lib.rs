@@ -12,8 +12,8 @@ pub use image_studio::{
     OutputImageFormat, ProcessedImageOutput,
 };
 pub use markdown::{
-    blocks_to_markdown, compile_to_tistory_html, markdown_to_blocks, TistoryStylePreset,
-    TrayImageMeta, VisualBlock,
+    blocks_to_markdown, compile_to_tistory_html, compile_to_tistory_html_with_cites,
+    markdown_to_blocks, CiteEntry, TistoryStylePreset, TrayImageMeta, VisualBlock,
 };
 pub use workspace::{ImageAssetRecord, PostDocument, WriterWorkspace};
 
@@ -319,6 +319,33 @@ mod tests {
             assert!(asset.gps_removed_verified);
             assert!(std::path::Path::new(&asset.dist_abs_path).exists());
         }
+    }
+
+    #[test]
+    fn test_overleaf_cite_bibtex_and_references_rendering() {
+        let dir = tempdir().unwrap();
+        let ws = WriterWorkspace::open_or_init(dir.path()).unwrap();
+
+        let bib = r#"@inproceedings{hewitt1973,
+            author = {Carl Hewitt and Peter Bishop and Richard Steiger},
+            title = {A Universal Modular ACTOR Formalism for Artificial Intelligence},
+            booktitle = {Proceedings of IJCAI},
+            year = {1973},
+            url = {https://ijcai.org/1973}
+        }"#;
+        let cites = ws.import_bibtex_cites(bib).unwrap();
+        assert_eq!(cites.len(), 1);
+        assert_eq!(cites[0].key, "hewitt1973");
+
+        let md = "Agent의 개념은 1973년 Actor Model[@hewitt1973]에서 처음 제안되었다. 또한 \\cite{hewitt1973} 참고.";
+        let html = ws
+            .compile_post_for_tistory(md, &TistoryStylePreset::default(), false)
+            .unwrap();
+
+        assert!(html.contains(">[1]</a>"));
+        assert!(html.contains("References</h3>"));
+        assert!(html.contains("Carl Hewitt and Peter Bishop and Richard Steiger"));
+        assert!(html.contains("A Universal Modular ACTOR Formalism for Artificial Intelligence"));
     }
 
     // =========================================================================

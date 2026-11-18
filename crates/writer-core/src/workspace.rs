@@ -4,8 +4,8 @@ use crate::image_studio::{
     FrameStyle, ImageRecipe, OutputImageFormat,
 };
 use crate::markdown::{
-    blocks_to_markdown, compile_to_tistory_html, markdown_to_blocks, TistoryStylePreset,
-    TrayImageMeta, VisualBlock,
+    blocks_to_markdown, compile_to_tistory_html_with_cites, markdown_to_blocks, CiteEntry,
+    TistoryStylePreset, TrayImageMeta, VisualBlock,
 };
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -475,12 +475,75 @@ fn main() {{
             lookup.insert(asset.dist_rel_path.clone(), meta);
         }
 
-        Ok(compile_to_tistory_html(
+        let cites = self.list_cites().unwrap_or_default();
+        Ok(compile_to_tistory_html_with_cites(
             markdown,
             preset,
             &lookup,
             include_preview_images,
+            &cites,
         ))
+    }
+
+    pub fn list_cites(&self) -> Result<Vec<CiteEntry>> {
+        let path = self.root_dir.join(".writer/references.json");
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let json = std::fs::read_to_string(&path)?;
+        let cites: Vec<CiteEntry> = serde_json::from_str(&json).unwrap_or_default();
+        Ok(cites)
+    }
+
+    fn save_cites(&self, cites: &[CiteEntry]) -> Result<()> {
+        let path = self.root_dir.join(".writer/references.json");
+        std::fs::write(&path, serde_json::to_string_pretty(cites)?)?;
+        Ok(())
+    }
+
+    pub fn upsert_cite(&self, entry: CiteEntry) -> Result<Vec<CiteEntry>> {
+        let mut cites = self.list_cites()?;
+        let clean_key = entry.key.trim().to_string();
+        if clean_key.is_empty() {
+            anyhow::bail!("인용 키(key)는 비워둘 수 없습니다.");
+        }
+        let normalized = CiteEntry {
+            key: clean_key.clone(),
+            ..entry
+        };
+        if let Some(existing) = cites.iter_mut().find(|c| c.key == clean_key) {
+            *existing = normalized;
+        } else {
+            cites.push(normalized);
+        }
+        self.save_cites(&cites)?;
+        Ok(cites)
+    }
+
+    pub fn delete_cite(&self, key: &str) -> Result<Vec<CiteEntry>> {
+        let mut cites = self.list_cites()?;
+        cites.retain(|c| c.key != key);
+        self.save_cites(&cites)?;
+        Ok(cites)
+    }
+
+    /// Parses a BibTeX snippet (e.g., `@inproceedings{hewitt1973, author={...}, title={...}, year={1973}}`)
+    /// and upserts all extracted entries into `.writer/references.json`.
+    pub fn import_bibtex_cites(&self, bibtex: &str) -> Result<Vec<CiteEntry>> {
+        let parsed = parse_bibtex_entries(bibtex);
+        if parsed.is_empty() {
+            anyhow::bail!("유효한 BibTeX 항목(@article, @inproceedings 등)을 찾지 못했습니다.");
+        }
+        let mut cites = self.list_cites()?;
+        for entry in parsed {
+            if let Some(existing) = cites.iter_mut().find(|c| c.key == entry.key) {
+                *existing = entry;
+            } else {
+                cites.push(entry);
+            }
+        }
+        self.save_cites(&cites)?;
+        Ok(cites)
     }
 
     pub fn create_git_snapshot(&self, message: &str) -> Result<GitSnapshotInfo> {
@@ -539,4 +602,86 @@ fn sanitize_slug(slug: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn parse_bibtex_entries(input: &str) -> Vec<CiteEntry> {
+    let mut entries = Vec::new();
+    for raw_block in input.split('@').skip(1) {
+        let Some(brace_idx) = raw_block.find('{') else {
+            continue;
+        };
+        let after_brace = &raw_block[brace_idx + 1..];
+        let Some(comma_idx) = after_brace.find(',') else {
+            continue;
+        };
+        let key = after_brace[..comma_idx].trim().to_string();
+        if key.is_empty() {
+            continue;
+        }
+        let body = &after_brace[comma_idx + 1..];
+        let authors = extract_bib_field(body, "author");
+        let title = extract_bib_field(body, "title");
+        let year = extract_bib_field(body, "year");
+        let venue = {
+            let bt = extract_bib_field(body, "booktitle");
+            if !bt.is_empty() {
+                bt
+            } else {
+                extract_bib_field(body, "journal")
+            }
+        };
+        let url = extract_bib_field(body, "url");
+
+        entries.push(CiteEntry {
+            key,
+            authors,
+            title,
+            year,
+            venue,
+            url,
+        });
+    }
+    entries
+}
+
+fn extract_bib_field(body: &str, field: &str) -> String {
+    let lower = body.to_lowercase();
+    let mut search_from = 0;
+    while let Some(pos) = lower[search_from..].find(field) {
+        let abs = search_from + pos;
+        let before_ok = abs == 0
+            || !body.as_bytes()[abs - 1].is_ascii_alphanumeric();
+        let after = &body[abs + field.len()..];
+        let trimmed_after = after.trim_start();
+        if before_ok && trimmed_after.starts_with('=') {
+            let val_part = trimmed_after[1..].trim_start();
+            if let Some(rest) = val_part.strip_prefix('{') {
+                let mut depth = 1usize;
+                let mut end = 0;
+                for (idx, ch) in rest.char_indices() {
+                    if ch == '{' {
+                        depth += 1;
+                    } else if ch == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = idx;
+                            break;
+                        }
+                    }
+                }
+                if end > 0 {
+                    return rest[..end].replace(['\n', '\r'], " ").trim().to_string();
+                }
+            } else if let Some(rest) = val_part.strip_prefix('"') {
+                if let Some(end) = rest.find('"') {
+                    return rest[..end].replace(['\n', '\r'], " ").trim().to_string();
+                }
+            } else {
+                let end = val_part.find([',', '}', '\n']).unwrap_or(val_part.len());
+                return val_part[..end].trim().to_string();
+            }
+        }
+        search_from = abs + field.len();
+    }
+    String::new()
 }

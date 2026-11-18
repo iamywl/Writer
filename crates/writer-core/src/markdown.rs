@@ -77,6 +77,19 @@ impl Default for TistoryStylePreset {
     }
 }
 
+/// A bibliographic reference / citation entry managed in Overleaf-style `.writer/references.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CiteEntry {
+    pub key: String,
+    pub authors: String,
+    pub title: String,
+    pub year: String,
+    #[serde(default)]
+    pub venue: String,
+    #[serde(default)]
+    pub url: String,
+}
+
 /// Metadata about a processed image in the Image Tray to enrich Tistory HTML output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrayImageMeta {
@@ -389,6 +402,24 @@ pub fn compile_to_tistory_html(
     image_lookup: &HashMap<String, TrayImageMeta>,
     include_preview_images: bool,
 ) -> String {
+    compile_to_tistory_html_with_cites(
+        markdown,
+        preset,
+        image_lookup,
+        include_preview_images,
+        &[],
+    )
+}
+
+/// Same as `compile_to_tistory_html`, but resolves `[@key]` and `\cite{key}` markers
+/// against `cites` and appends a numbered `References` section at the bottom.
+pub fn compile_to_tistory_html_with_cites(
+    markdown: &str,
+    preset: &TistoryStylePreset,
+    image_lookup: &HashMap<String, TrayImageMeta>,
+    include_preview_images: bool,
+    cites: &[CiteEntry],
+) -> String {
     let ss = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
     let theme = ts
@@ -599,7 +630,158 @@ pub fn compile_to_tistory_html(
     }
 
     html_parts.push("</div>".to_string());
-    html_parts.join("\n")
+    let raw_html = html_parts.join("\n");
+    resolve_citations_in_html(&raw_html, cites, preset)
+}
+
+/// Replaces `[@key]` and `\cite{key}` tokens in compiled HTML with `[1]`, `[2]`...
+/// and appends a formatted `References` section at the bottom for all cited entries.
+fn resolve_citations_in_html(
+    html: &str,
+    cites: &[CiteEntry],
+    preset: &TistoryStylePreset,
+) -> String {
+    if cites.is_empty() && !html.contains("[@") && !html.contains("\\cite{") {
+        return html.to_string();
+    }
+
+    let cite_map: HashMap<&str, &CiteEntry> =
+        cites.iter().map(|c| (c.key.as_str(), c)).collect();
+    let mut order: Vec<String> = Vec::new();
+    let mut key_to_num: HashMap<String, usize> = HashMap::new();
+
+    let mut out = String::with_capacity(html.len() + 512);
+    let mut i = 0;
+    let bytes = html.as_bytes();
+
+    while i < bytes.len() {
+        if html[i..].starts_with("[@") {
+            if let Some(end_rel) = html[i + 2..].find(']') {
+                let key = html[i + 2..i + 2 + end_rel].trim();
+                if !key.is_empty() && !key.contains('<') && !key.contains(' ') {
+                    let num = if let Some(&n) = key_to_num.get(key) {
+                        n
+                    } else {
+                        order.push(key.to_string());
+                        let n = order.len();
+                        key_to_num.insert(key.to_string(), n);
+                        n
+                    };
+                    out.push_str(&format!(
+                        r##"<a href="#ref-{k}" style="color: {accent}; font-weight: 600; text-decoration: none;">[{n}]</a>"##,
+                        k = escape_html(key),
+                        accent = preset.accent_color,
+                        n = num
+                    ));
+                    i += 2 + end_rel + 1;
+                    continue;
+                }
+            }
+        } else if html[i..].starts_with("\\cite{") {
+            if let Some(end_rel) = html[i + 6..].find('}') {
+                let keys_raw = &html[i + 6..i + 6 + end_rel];
+                if !keys_raw.contains('<') {
+                    let mut badges = Vec::new();
+                    for raw_k in keys_raw.split(',') {
+                        let key = raw_k.trim();
+                        if key.is_empty() {
+                            continue;
+                        }
+                        let num = if let Some(&n) = key_to_num.get(key) {
+                            n
+                        } else {
+                            order.push(key.to_string());
+                            let n = order.len();
+                            key_to_num.insert(key.to_string(), n);
+                            n
+                        };
+                        badges.push(format!(
+                            r##"<a href="#ref-{k}" style="color: {accent}; font-weight: 600; text-decoration: none;">[{n}]</a>"##,
+                            k = escape_html(key),
+                            accent = preset.accent_color,
+                            n = num
+                        ));
+                    }
+                    if !badges.is_empty() {
+                        out.push_str(&badges.join(" "));
+                        i += 6 + end_rel + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        let ch = html[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+
+    if order.is_empty() {
+        return out;
+    }
+
+    let mut refs_html = String::new();
+    refs_html.push_str(
+        r#"<div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #e4e4e7;">"#,
+    );
+    refs_html.push_str(&format!(
+        r#"<h3 style="font-family: {}; font-size: {}px; font-weight: 700; margin: 0 0 12px 0; color: #18181b;">References</h3>"#,
+        preset.font_family, preset.h3_size_px
+    ));
+    refs_html.push_str(
+        r#"<ol style="margin: 0; padding-left: 20px; color: #3f3f46; font-size: 14px; line-height: 1.65;">"#,
+    );
+
+    for (idx, key) in order.iter().enumerate() {
+        let num = idx + 1;
+        if let Some(entry) = cite_map.get(key.as_str()) {
+            let mut parts = Vec::new();
+            if !entry.authors.trim().is_empty() {
+                parts.push(escape_html(entry.authors.trim()));
+            }
+            if !entry.year.trim().is_empty() {
+                parts.push(format!("({})", escape_html(entry.year.trim())));
+            }
+            if !entry.title.trim().is_empty() {
+                parts.push(format!(
+                    "<strong>{}</strong>",
+                    escape_html(entry.title.trim())
+                ));
+            }
+            if !entry.venue.trim().is_empty() {
+                parts.push(format!("<em>{}</em>", escape_html(entry.venue.trim())));
+            }
+            let mut body = parts.join(". ");
+            if !entry.url.trim().is_empty() {
+                body.push_str(&format!(
+                    r#" <a href="{u}" style="color: {accent}; text-decoration: underline;">{u}</a>"#,
+                    u = escape_html(entry.url.trim()),
+                    accent = preset.accent_color
+                ));
+            }
+            refs_html.push_str(&format!(
+                r#"<li id="ref-{k}" value="{n}" style="margin-bottom: 8px;">{body}</li>"#,
+                k = escape_html(key),
+                n = num,
+                body = body
+            ));
+        } else {
+            refs_html.push_str(&format!(
+                r#"<li id="ref-{k}" value="{n}" style="margin-bottom: 8px; color: #71717a;">[{k}] (등록되지 않은 참고문헌 키)</li>"#,
+                k = escape_html(key),
+                n = num
+            ));
+        }
+    }
+
+    refs_html.push_str("</ol></div>");
+
+    if let Some(pos) = out.rfind("</div>") {
+        out.insert_str(pos, &refs_html);
+    } else {
+        out.push_str(&refs_html);
+    }
+    out
 }
 
 /// Renders inline Markdown formatting (`**bold**`, `*italic*`, `` `code` ``, `[link](url)`, `==highlight==`)

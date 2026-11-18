@@ -4,6 +4,7 @@ import {
   ArrowDownLeft,
   ArrowUp,
   ArrowUpRight,
+  BookOpen,
   Check,
   Code2,
   Columns,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  CiteEntry,
   FilterPreset,
   FrameStyle,
   GitRemoteStatus,
@@ -40,7 +42,7 @@ import {
 } from "./api";
 
 type EditorViewMode = "visual" | "code" | "split";
-type LeftMenuTab = "posts" | "git" | "tray" | "studio" | "style";
+type LeftMenuTab = "posts" | "git" | "cite" | "tray" | "studio" | "style";
 
 const FILTER_LABELS: { value: FilterPreset; label: string; desc: string }[] = [
   { value: "original", label: "Original", desc: "원본" },
@@ -356,6 +358,17 @@ function MainEditorWindow() {
   const [editingRecipe, setEditingRecipe] = useState<ImageRecipe | null>(null);
   const [editingCaption, setEditingCaption] = useState<string>("");
 
+  const [cites, setCites] = useState<CiteEntry[]>([]);
+  const [bibtexInput, setBibtexInput] = useState<string>("");
+  const [citeForm, setCiteForm] = useState<CiteEntry>({
+    key: "",
+    authors: "",
+    title: "",
+    year: "",
+    venue: "",
+    url: "",
+  });
+
   const [snapshots, setSnapshots] = useState<GitSnapshotInfo[]>([]);
   const [hasChanges, setHasChanges] = useState<boolean>(false);
   const [commitMessage, setCommitMessage] = useState<string>("");
@@ -424,6 +437,7 @@ function MainEditorWindow() {
         setMarkdownText(boot.active_post.markdown);
         setVisualBlocks(boot.active_post.blocks);
         setAssets(boot.assets);
+        setCites(boot.cites ?? []);
         if (boot.assets.length > 0) {
           setSelectedAssetId(boot.assets[0].asset_id);
           setEditingRecipe(boot.assets[0].recipe);
@@ -609,7 +623,10 @@ function MainEditorWindow() {
     }
   };
 
-  const handleFileUpload = async (files: FileList | null) => {
+  const handleFileUpload = async (
+    files: FileList | File[] | null,
+    insertIntoPost = false
+  ) => {
     if (!files || files.length === 0) return;
     const file = files[0];
     setIsBusy(true);
@@ -622,17 +639,100 @@ function MainEditorWindow() {
         binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
       }
       const base64Data = btoa(binary);
-      const res = await api.uploadImage(file.name, base64Data);
+      const fname = file.name || `clipboard_${Date.now()}.png`;
+      const res = await api.uploadImage(fname, base64Data);
       setAssets(res.assets);
       setHasChanges(res.has_changes);
-      handleSelectAsset(res.asset, true);
-      showToastMessage(
-        `'${file.name}' 추가 및 GPS 메타데이터 제거 완료 (${res.asset.recipe.output_format.toUpperCase()})`
-      );
+      handleSelectAsset(res.asset, !insertIntoPost);
+      if (insertIntoPost) {
+        handleInsertAssetIntoPost(res.asset);
+        showToastMessage(
+          `클립보드 이미지가 본문에 삽입되었습니다 (${res.asset.recipe.output_format.toUpperCase()} 변환 완료)`
+        );
+      } else {
+        showToastMessage(
+          `'${fname}' 추가 및 GPS 메타데이터 제거 완료 (${res.asset.recipe.output_format.toUpperCase()})`
+        );
+      }
     } catch (err: any) {
       showToastMessage(`이미지 처리 실패: ${err.message}`);
     } finally {
       setIsBusy(false);
+    }
+  };
+
+  const handleEditorPaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleFileUpload([file], true);
+          return;
+        }
+      }
+    }
+  };
+
+  const handleSaveCite = async () => {
+    if (!citeForm.key.trim() || !citeForm.title.trim()) {
+      showToastMessage("인용 키(key)와 제목은 필수입니다.");
+      return;
+    }
+    try {
+      const res = await api.upsertCite(citeForm, markdownText, preset);
+      setCites(res.cites);
+      setPreviewHtml(res.preview_html);
+      setHasChanges(res.has_changes);
+      setCiteForm({ key: "", authors: "", title: "", year: "", venue: "", url: "" });
+      showToastMessage(`참고문헌 [@${citeForm.key.trim()}] 저장 완료`);
+    } catch (err: any) {
+      showToastMessage(`참고문헌 저장 실패: ${err.message}`);
+    }
+  };
+
+  const handleDeleteCite = async (key: string) => {
+    try {
+      const res = await api.deleteCite(key, markdownText, preset);
+      setCites(res.cites);
+      setPreviewHtml(res.preview_html);
+      setHasChanges(res.has_changes);
+      showToastMessage(`참고문헌 [@${key}] 삭제됨`);
+    } catch (err: any) {
+      showToastMessage(`삭제 실패: ${err.message}`);
+    }
+  };
+
+  const handleImportBibtex = async () => {
+    if (!bibtexInput.trim()) return;
+    try {
+      const res = await api.importBibtex(bibtexInput, markdownText, preset);
+      setCites(res.cites);
+      setPreviewHtml(res.preview_html);
+      setHasChanges(res.has_changes);
+      setBibtexInput("");
+      showToastMessage("BibTeX 참고문헌 가져오기 완료");
+    } catch (err: any) {
+      showToastMessage(`BibTeX 파싱 실패: ${err.message}`);
+    }
+  };
+
+  const handleInsertCiteIntoPost = (key: string) => {
+    const token = `[@${key}]`;
+    const target = visualBlocks[focusedBlockIdx];
+    if (target && "text" in target) {
+      const sep = target.text.endsWith(" ") || target.text === "" ? "" : " ";
+      updateBlockAt(focusedBlockIdx, {
+        ...target,
+        text: `${target.text}${sep}${token}`,
+      });
+      showToastMessage(`현재 문단에 ${token} 인용이 삽입되었습니다.`);
+    } else {
+      addBlock({ type: "paragraph", text: token });
+      showToastMessage(`새 문단에 ${token} 인용이 삽입되었습니다.`);
     }
   };
 
@@ -897,6 +997,16 @@ function MainEditorWindow() {
           </button>
 
           <button
+            className={activeMenu === "cite" ? "activity-btn active" : "activity-btn"}
+            onClick={() => toggleMenuTab("cite")}
+            title="Overleaf 스타일 참고문헌(Cite) & BibTeX 관리"
+          >
+            <BookOpen size={17} strokeWidth={1.6} />
+            <span className="activity-label">인용·Cite</span>
+            {cites.length > 0 && <span className="activity-count">{cites.length}</span>}
+          </button>
+
+          <button
             className={activeMenu === "tray" ? "activity-btn active" : "activity-btn"}
             onClick={() => toggleMenuTab("tray")}
             title="사진 보관함 및 트레이"
@@ -933,6 +1043,7 @@ function MainEditorWindow() {
                 <span className="drawer-title">
                   {activeMenu === "posts" && "문서 목록"}
                   {activeMenu === "git" && "버전 관리 (Git)"}
+                  {activeMenu === "cite" && `참고문헌 · Cite (${cites.length})`}
                   {activeMenu === "tray" && `사진 보관함 (${assets.length})`}
                   {activeMenu === "studio" && "사진 현상 · 변환"}
                   {activeMenu === "style" && "서식 · 타이포그래피"}
@@ -1109,6 +1220,108 @@ function MainEditorWindow() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: CITE / REFERENCES (Overleaf BibTeX Style) */}
+              {activeMenu === "cite" && (
+                <div className="drawer-body">
+                  <div className="section-header">
+                    <span>BibTeX 빠른 가져오기</span>
+                  </div>
+                  <div className="control-group">
+                    <textarea
+                      rows={4}
+                      placeholder="@inproceedings{hewitt1973, author={Carl Hewitt}, title={Actor Model}, year={1973}}"
+                      value={bibtexInput}
+                      onChange={(e) => setBibtexInput(e.target.value)}
+                      style={{
+                        width: "100%",
+                        fontSize: "11px",
+                        fontFamily: "monospace",
+                        padding: "6px",
+                        border: "1px solid #d4d4d8",
+                        borderRadius: "4px",
+                        resize: "vertical",
+                      }}
+                    />
+                    <button className="btn-git-commit" onClick={handleImportBibtex}>
+                      BibTeX 파싱 및 추가
+                    </button>
+                  </div>
+
+                  <div className="section-header" style={{ marginTop: "4px" }}>
+                    <span>직접 참고문헌 등록</span>
+                  </div>
+                  <div className="control-group">
+                    <input
+                      type="text"
+                      placeholder="인용 키 (예: hewitt1973)"
+                      value={citeForm.key}
+                      onChange={(e) => setCiteForm({ ...citeForm, key: e.target.value })}
+                    />
+                    <input
+                      type="text"
+                      placeholder="저자 (예: Carl Hewitt et al.)"
+                      value={citeForm.authors}
+                      onChange={(e) => setCiteForm({ ...citeForm, authors: e.target.value })}
+                    />
+                    <input
+                      type="text"
+                      placeholder="논문/자료 제목"
+                      value={citeForm.title}
+                      onChange={(e) => setCiteForm({ ...citeForm, title: e.target.value })}
+                    />
+                    <div className="format-row">
+                      <input
+                        type="text"
+                        placeholder="연도 (1973)"
+                        value={citeForm.year}
+                        onChange={(e) => setCiteForm({ ...citeForm, year: e.target.value })}
+                      />
+                      <input
+                        type="text"
+                        placeholder="학회/출처 (IJCAI)"
+                        value={citeForm.venue}
+                        onChange={(e) => setCiteForm({ ...citeForm, venue: e.target.value })}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="링크 URL (선택)"
+                      value={citeForm.url}
+                      onChange={(e) => setCiteForm({ ...citeForm, url: e.target.value })}
+                    />
+                    <button className="btn-apply-recipe" onClick={handleSaveCite}>
+                      참고문헌 저장
+                    </button>
+                  </div>
+
+                  <div className="section-header" style={{ marginTop: "4px" }}>
+                    <span>등록된 참고문헌 ({cites.length})</span>
+                  </div>
+                  <div className="snapshot-list">
+                    {cites.map((c) => (
+                      <div key={c.key} className="snapshot-card">
+                        <div className="snapshot-top">
+                          <span className="snapshot-hash">[@{c.key}]</span>
+                          <span className="snapshot-time">{c.year}</span>
+                        </div>
+                        <div className="snapshot-msg">{c.title}</div>
+                        {c.authors && (
+                          <div style={{ fontSize: "10.5px", color: "#52525b", marginBottom: "6px" }}>
+                            {c.authors}
+                          </div>
+                        )}
+                        <div className="snapshot-actions">
+                          <button onClick={() => handleInsertCiteIntoPost(c.key)}>
+                            본문에 인용 삽입
+                          </button>
+                          <button onClick={() => handleDeleteCite(c.key)}>삭제</button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -1523,10 +1736,11 @@ function MainEditorWindow() {
           </>
         )}
 
-        {/* CENTER PANE: Editor Area (supports dropping photos directly anywhere) */}
+        {/* CENTER PANE: Editor Area (supports dropping photos & pasting clipboard images) */}
         <main
           className="center-editor-area"
           ref={centerAreaRef}
+          onPaste={handleEditorPaste}
           onDragOver={(e) => {
             if (e.dataTransfer.types.includes("Files")) {
               e.preventDefault();
