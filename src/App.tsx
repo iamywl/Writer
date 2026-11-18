@@ -1302,10 +1302,11 @@ function MainEditorWindow() {
                     <span>등록된 참고문헌 ({cites.length})</span>
                   </div>
                   <div className="snapshot-list">
-                    {cites.map((c) => (
+                    {cites.map((c, idx) => (
                       <div key={c.key} className="snapshot-card">
                         <div className="snapshot-top">
-                          <span className="snapshot-hash">[@{c.key}]</span>
+                          <span className="tray-badge">[{idx + 1}]</span>
+                          <span className="snapshot-hash">@{c.key}</span>
                           <span className="snapshot-time">{c.year}</span>
                         </div>
                         <div className="snapshot-msg">{c.title}</div>
@@ -2087,41 +2088,73 @@ function MainEditorWindow() {
                 )}
 
                 {block.type === "paragraph" && (
-                  <textarea
-                    className="doc-paragraph-input"
-                    style={{
-                      fontSize: `${block.font_size_px ?? preset.body_font_size_px}px`,
-                      lineHeight: preset.line_height,
-                    }}
-                    placeholder="내용을 입력하세요..."
-                    rows={Math.max(
-                      1,
-                      Math.ceil(block.text.length / 42),
-                      block.text.split("\n").length
-                    )}
-                    value={block.text}
-                    onFocus={() => setFocusedBlockIdx(idx)}
-                    onChange={(e) =>
-                      updateBlockAt(idx, { ...block, text: e.target.value })
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        insertBlockAfter(idx, {
-                          type: "paragraph",
-                          text: "",
-                          font_size_px: block.font_size_px,
-                        });
-                      } else if (
-                        e.key === "Backspace" &&
-                        block.text === "" &&
-                        visualBlocks.length > 1
-                      ) {
-                        e.preventDefault();
-                        removeBlockAt(idx);
+                  <>
+                    <textarea
+                      className="doc-paragraph-input"
+                      style={{
+                        fontSize: `${block.font_size_px ?? preset.body_font_size_px}px`,
+                        lineHeight: preset.line_height,
+                      }}
+                      placeholder="내용을 입력하세요..."
+                      rows={Math.max(
+                        1,
+                        Math.ceil(block.text.length / 42),
+                        block.text.split("\n").length
+                      )}
+                      value={block.text}
+                      onFocus={() => setFocusedBlockIdx(idx)}
+                      onChange={(e) =>
+                        updateBlockAt(idx, { ...block, text: e.target.value })
                       }
-                    }}
-                  />
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          insertBlockAfter(idx, {
+                            type: "paragraph",
+                            text: "",
+                            font_size_px: block.font_size_px,
+                          });
+                        } else if (
+                          e.key === "Backspace" &&
+                          block.text === "" &&
+                          visualBlocks.length > 1
+                        ) {
+                          e.preventDefault();
+                          removeBlockAt(idx);
+                        }
+                      }}
+                    />
+                    {(() => {
+                      const matches = Array.from(block.text.matchAll(/\[@([^\]]+)\]/g));
+                      if (matches.length === 0) return null;
+                      return (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
+                          {matches.map((m, mi) => {
+                            const k = m[1];
+                            const cIdx = cites.findIndex((c) => c.key === k);
+                            const cObj = cIdx >= 0 ? cites[cIdx] : null;
+                            return (
+                              <span
+                                key={`${k}-${mi}`}
+                                style={{
+                                  fontSize: "11px",
+                                  background: "#f4f4f5",
+                                  color: "#3f3f46",
+                                  padding: "2px 7px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #e4e4e7",
+                                }}
+                              >
+                                {cObj
+                                  ? `[${cIdx + 1}] ${cObj.title}`
+                                  : `[@${k}] (미등록 인용)`}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
 
                 {block.type === "quote" && (
