@@ -2299,6 +2299,10 @@ function MainEditorWindow() {
                 {block.type === "bullet_list" && (
                   <AutoResizeTextarea
                     className="doc-paragraph-input doc-list-input"
+                    style={{
+                      fontSize: `${preset.body_font_size_px}px`,
+                      lineHeight: preset.line_height,
+                    }}
                     value={block.items.join("\n")}
                     placeholder="한 줄에 하나씩 목록을 입력하세요..."
                     onFocus={() => setFocusedBlockIdx(idx)}
