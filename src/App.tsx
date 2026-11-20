@@ -825,6 +825,25 @@ function MainEditorWindow() {
     }
   };
 
+  const handleDeleteAsset = async (assetId: string) => {
+    try {
+      const res = await api.deleteAsset(assetId);
+      setAssets(res.assets);
+      setHasChanges(res.has_changes);
+      if (selectedAssetId === assetId) {
+        if (res.assets.length > 0) {
+          handleSelectAsset(res.assets[0], false);
+        } else {
+          setSelectedAssetId(null);
+          setEditingRecipe(null);
+        }
+      }
+      showToastMessage("사진이 보관함에서 삭제되었습니다.");
+    } catch (err: any) {
+      showToastMessage(`사진 삭제 실패: ${err.message}`);
+    }
+  };
+
   const handleOpenCopyWindow = async () => {
     try {
       await api.openCopyWindow(activePost?.slug);
@@ -1389,6 +1408,16 @@ function MainEditorWindow() {
                               <span>GPS 제거</span>
                             </span>
                           )}
+                          <button
+                            className="drawer-close-btn"
+                            title="사진 삭제"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteAsset(asset.asset_id);
+                            }}
+                          >
+                            <Trash2 size={12} strokeWidth={1.7} />
+                          </button>
                         </div>
 
                         <div className="tray-thumb-wrap">

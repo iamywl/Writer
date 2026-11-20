@@ -636,6 +636,20 @@ fn import_bibtex_cmd(
     }))
 }
 
+#[tauri::command]
+fn delete_asset_cmd(
+    state: tauri::State<'_, Arc<AppState>>,
+    #[allow(non_snake_case)] assetId: String,
+) -> Result<Value, String> {
+    let ws = state.open_workspace().map_err(|e| e.to_string())?;
+    let assets = ws.delete_asset(&assetId).map_err(|e| e.to_string())?;
+    let has_changes = ws.git().has_uncommitted_changes().unwrap_or(true);
+    Ok(json!({
+        "assets": assets,
+        "has_changes": has_changes,
+    }))
+}
+
 // =========================================================================
 // Local HTTP RPC Fallback Server (127.0.0.1:14210)
 // =========================================================================
@@ -848,6 +862,7 @@ fn main() {
             upsert_cite_cmd,
             delete_cite_cmd,
             import_bibtex_cmd,
+            delete_asset_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Writer Tauri application");

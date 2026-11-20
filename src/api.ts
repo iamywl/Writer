@@ -275,4 +275,8 @@ export const api = {
       copy_html: string;
       has_changes: boolean;
     }>("import_bibtex_cmd", { bibtex, markdown, preset }),
+  deleteAsset: (assetId: string) =>
+    callBackend<{ assets: ImageAssetRecord[]; has_changes: boolean }>("delete_asset_cmd", {
+      assetId,
+    }),
 };

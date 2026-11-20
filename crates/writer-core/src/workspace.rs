@@ -383,6 +383,24 @@ fn main() {{
         Ok(record)
     }
 
+    /// Deletes an image asset's raw file, processed file, and recipe JSON from the workspace.
+    pub fn delete_asset(&self, asset_id: &str) -> Result<Vec<ImageAssetRecord>> {
+        if let Ok(record) = self.load_asset_record(asset_id) {
+            let raw_path = self.root_dir.join(&record.raw_rel_path);
+            let _ = std::fs::remove_file(raw_path);
+            let dist_path = self.root_dir.join(&record.dist_rel_path);
+            let _ = std::fs::remove_file(dist_path);
+        }
+        let recipe_path = self
+            .root_dir
+            .join(".writer/recipes")
+            .join(format!("{}.json", asset_id));
+        if recipe_path.exists() {
+            std::fs::remove_file(recipe_path)?;
+        }
+        self.list_assets()
+    }
+
     pub fn list_assets(&self) -> Result<Vec<ImageAssetRecord>> {
         let recipes_dir = self.root_dir.join(".writer/recipes");
         let mut records = Vec::new();
