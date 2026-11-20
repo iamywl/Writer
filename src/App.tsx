@@ -10,6 +10,7 @@ import {
   Columns,
   Copy,
   ExternalLink,
+  Eye,
   FileText,
   GitBranch,
   GitCommit,
@@ -41,7 +42,7 @@ import {
   VisualBlock,
 } from "./api";
 
-type EditorViewMode = "visual" | "code" | "split";
+type EditorViewMode = "visual" | "code" | "split" | "preview";
 type LeftMenuTab = "posts" | "git" | "cite" | "tray" | "studio" | "style";
 
 const FILTER_LABELS: { value: FilterPreset; label: string; desc: string }[] = [
@@ -1027,6 +1028,13 @@ function MainEditorWindow() {
             <Columns size={13} strokeWidth={1.7} />
             <span>분할 보기</span>
           </button>
+          <button
+            className={viewMode === "preview" ? "mode-btn active" : "mode-btn"}
+            onClick={() => setViewMode("preview")}
+          >
+            <Eye size={13} strokeWidth={1.7} />
+            <span>미리보기</span>
+          </button>
         </div>
 
         <div className="top-actions">
@@ -1876,21 +1884,33 @@ function MainEditorWindow() {
 
               <div className="split-pane" style={{ flex: 1 }}>
                 <div className="pane-toolbar">
-                  <span className="pane-title">Markdown & Live Preview</span>
+                  <span className="pane-title">Markdown Source</span>
                 </div>
-                <div className="split-right-vertical">
-                  <textarea
-                    className="markdown-textarea compact"
-                    value={markdownText}
-                    onChange={(e) => syncFromMarkdown(e.target.value)}
+                <textarea
+                  className="markdown-textarea full"
+                  value={markdownText}
+                  onChange={(e) => syncFromMarkdown(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {viewMode === "preview" && (
+            <div className="single-pane">
+              <div className="pane-toolbar">
+                <span className="pane-title">실시간 미리보기 (티스토리 출력 결과)</span>
+                <button className="btn-mini" onClick={handleCopyTistoryHtml}>
+                  <Copy size={12} strokeWidth={1.7} />
+                  <span>본문 서식 복사</span>
+                </button>
+              </div>
+              <div className="visual-editor-scroll">
+                <div className="document-paper">
+                  <div
+                    className="tistory-preview-canvas"
+                    style={{ padding: 0 }}
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
                   />
-                  <div className="tistory-live-preview-wrapper">
-                    <div className="preview-sticky-label">Preview</div>
-                    <div
-                      className="tistory-preview-canvas"
-                      dangerouslySetInnerHTML={{ __html: previewHtml }}
-                    />
-                  </div>
                 </div>
               </div>
             </div>
