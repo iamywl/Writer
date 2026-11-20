@@ -108,3 +108,13 @@ npm run test:rust
   6. 내장 Git 엔진 스냅샷 커밋 · 빈 스냅샷 차단 · Diff · 롤백 검증
   7. Git 원격 저장소(`origin`) 연결 및 Push 통합 검증
   8. 앱 부트스트랩 → 비주얼 편집 → 사진 레시피 렌더링 → Git 롤백 E2E 검증
+
+---
+
+## 버전별 패치노트 (Release Notes)
+
+* [**v0.2.1**](CHANGELOG.md#v021--editor-typing-stability--citation-ux-polish-2026-11-18) — 에디터 한글 타이핑 커서 튐 해결(250ms 디바운스 + 시퀀스 가드), 일반 텍스트 인용구 자동 파싱, `[1]` 번호 배지 UI 개선
+* [**v0.2.0**](CHANGELOG.md#v020--overleaf-style-cite-management--clipboard-image-paste-2026-11-18) — Overleaf 스타일 참고문헌(`인용·Cite`) 및 BibTeX 관리, 클립보드 이미지 바로 붙여넣기(`Cmd+V`), iCam 필름 스톡 10종 추가
+* [**v0.1.0**](CHANGELOG.md#v010--initial-release-2026-11-16) — 최초 릴리즈 (이중 편집기, 아이폰 HEIC 현상소, 티스토리 독립 복붙 윈도우, 내장 Git 타임라인)
+
+전체 변경 내역은 [CHANGELOG.md](CHANGELOG.md)에서 확인하실 수 있습니다.
