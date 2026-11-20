@@ -64,6 +64,34 @@ const FRAME_LABELS: { value: FrameStyle; label: string }[] = [
   { value: "rounded_shadow", label: "라운드 코너 + 배경" },
 ];
 
+function AutoResizeTextarea(
+  props: React.TextareaHTMLAttributes<HTMLTextAreaElement>
+) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [props.value, props.style?.fontSize]);
+
+  return (
+    <textarea
+      {...props}
+      ref={ref}
+      rows={1}
+      style={{ ...props.style, overflow: "hidden" }}
+      onInput={(e) => {
+        const el = e.currentTarget;
+        el.style.height = "auto";
+        el.style.height = `${el.scrollHeight}px`;
+        props.onInput?.(e);
+      }}
+    />
+  );
+}
+
 export function App() {
   const isCopyCompanionWindow =
     typeof window !== "undefined" &&
@@ -2138,18 +2166,13 @@ function MainEditorWindow() {
 
                 {block.type === "paragraph" && (
                   <>
-                    <textarea
+                    <AutoResizeTextarea
                       className="doc-paragraph-input"
                       style={{
                         fontSize: `${block.font_size_px ?? preset.body_font_size_px}px`,
                         lineHeight: preset.line_height,
                       }}
                       placeholder="내용을 입력하세요..."
-                      rows={Math.max(
-                        1,
-                        Math.ceil(block.text.length / 42),
-                        block.text.split("\n").length
-                      )}
                       value={block.text}
                       onFocus={() => setFocusedBlockIdx(idx)}
                       onChange={(e) =>
@@ -2207,7 +2230,7 @@ function MainEditorWindow() {
                 )}
 
                 {block.type === "quote" && (
-                  <textarea
+                  <AutoResizeTextarea
                     className="doc-quote-input"
                     style={{
                       fontSize: `${preset.body_font_size_px}px`,
@@ -2215,7 +2238,6 @@ function MainEditorWindow() {
                       borderLeftColor: preset.accent_color,
                     }}
                     placeholder="인용구를 입력하세요..."
-                    rows={Math.max(1, block.text.split("\n").length)}
                     value={block.text}
                     onFocus={() => setFocusedBlockIdx(idx)}
                     onChange={(e) =>
@@ -2255,9 +2277,8 @@ function MainEditorWindow() {
                 )}
 
                 {block.type === "bullet_list" && (
-                  <textarea
+                  <AutoResizeTextarea
                     className="doc-paragraph-input doc-list-input"
-                    rows={Math.max(2, block.items.length)}
                     value={block.items.join("\n")}
                     placeholder="한 줄에 하나씩 목록을 입력하세요..."
                     onFocus={() => setFocusedBlockIdx(idx)}
