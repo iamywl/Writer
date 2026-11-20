@@ -450,6 +450,24 @@ function MainEditorWindow() {
   const centerAreaRef = useRef<HTMLElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const saveSeqRef = useRef<number>(0);
+  const blockRowRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const handleMarkdownCursorSync = (el: HTMLTextAreaElement) => {
+    const pos = el.selectionStart ?? 0;
+    const beforeCursor = el.value.slice(0, pos);
+    const nonEmptyChunks = beforeCursor
+      .split(/\n\s*\n/)
+      .filter((c) => c.trim().length > 0);
+    const targetIdx = Math.max(
+      0,
+      Math.min(visualBlocks.length - 1, nonEmptyChunks.length - 1)
+    );
+    setFocusedBlockIdx(targetIdx);
+    const rowEl = blockRowRefs.current[targetIdx];
+    if (rowEl) {
+      rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
 
   const showToastMessage = (msg: string) => {
     setToast(msg);
@@ -1889,6 +1907,8 @@ function MainEditorWindow() {
                 <textarea
                   className="markdown-textarea full"
                   value={markdownText}
+                  onClick={(e) => handleMarkdownCursorSync(e.currentTarget)}
+                  onKeyUp={(e) => handleMarkdownCursorSync(e.currentTarget)}
                   onChange={(e) => syncFromMarkdown(e.target.value)}
                 />
               </div>
@@ -2121,6 +2141,9 @@ function MainEditorWindow() {
           return (
             <div
               key={idx}
+              ref={(el) => {
+                blockRowRefs.current[idx] = el;
+              }}
               className={
                 isFocused ? "doc-block-row focused" : "doc-block-row"
               }
@@ -2297,22 +2320,46 @@ function MainEditorWindow() {
                 )}
 
                 {block.type === "bullet_list" && (
-                  <AutoResizeTextarea
-                    className="doc-paragraph-input doc-list-input"
-                    style={{
-                      fontSize: `${preset.body_font_size_px}px`,
-                      lineHeight: preset.line_height,
-                    }}
-                    value={block.items.join("\n")}
-                    placeholder="한 줄에 하나씩 목록을 입력하세요..."
-                    onFocus={() => setFocusedBlockIdx(idx)}
-                    onChange={(e) =>
-                      updateBlockAt(idx, {
-                        ...block,
-                        items: e.target.value.split("\n"),
-                      })
-                    }
-                  />
+                  <div className="doc-bullet-list">
+                    {block.items.map((itemText, itemIdx) => (
+                      <div key={itemIdx} className="doc-bullet-row">
+                        <span className="doc-bullet-dot">•</span>
+                        <AutoResizeTextarea
+                          className="doc-paragraph-input"
+                          style={{
+                            fontSize: `${preset.body_font_size_px}px`,
+                            lineHeight: preset.line_height,
+                          }}
+                          value={itemText}
+                          placeholder="목록 항목을 입력하세요..."
+                          onFocus={() => setFocusedBlockIdx(idx)}
+                          onChange={(e) => {
+                            const nextItems = [...block.items];
+                            nextItems[itemIdx] = e.target.value;
+                            updateBlockAt(idx, { ...block, items: nextItems });
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              const nextItems = [...block.items];
+                              nextItems.splice(itemIdx + 1, 0, "");
+                              updateBlockAt(idx, { ...block, items: nextItems });
+                            } else if (
+                              e.key === "Backspace" &&
+                              itemText === "" &&
+                              block.items.length > 1
+                            ) {
+                              e.preventDefault();
+                              const nextItems = block.items.filter(
+                                (_, i) => i !== itemIdx
+                              );
+                              updateBlockAt(idx, { ...block, items: nextItems });
+                            }
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 {block.type === "image" && (
